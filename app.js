@@ -1,4 +1,27 @@
 'use strict';
+function sortByName(){
+ const rows=[...document.querySelector('#roster tbody').rows];
+ const collator=new Intl.Collator('ko',{numeric:true,sensitivity:'base'});
+ const records=rows.map((row,index)=>({index,values:[...row.querySelectorAll('input')].map(input=>input.value)}));
+ records.sort((a,b)=>{const an=a.values[0].trim(),bn=b.values[0].trim();return (!an)-(!bn)||collator.compare(an,bn)||a.index-b.index;});
+ rows.forEach((row,index)=>{row.querySelectorAll('input').forEach((input,col)=>{input.value=records[index].values[col];});});
+ calc();persist();
+}
+document.addEventListener('keydown',event=>{
+ if(event.key!=='Enter'||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
+ const input=event.target;if(input.tagName!=='INPUT'||!input.closest('.page'))return;
+ event.preventDefault();
+ const cell=input.closest('td'),row=cell?.parentElement,body=row?.parentElement;
+ let next;
+ if(body?.matches('#roster tbody')){
+  const rows=[...body.rows],index=rows.indexOf(row)+(event.shiftKey?-1:1);
+  next=rows[index]?.cells[cell.cellIndex]?.querySelector('input');
+ }else{
+  const inputs=[...document.querySelectorAll('.page input')];
+  next=inputs[inputs.indexOf(input)+(event.shiftKey?-1:1)];
+ }
+ if(next){next.focus();if(next.type!=='number')next.select();}
+});
 const storageKey='gdk-project-v1';
 const statusNode=document.getElementById('saveStatus');
 const editable=()=>[...document.querySelectorAll('.page input,.page [contenteditable]')];
