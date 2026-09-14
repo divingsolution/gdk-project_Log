@@ -1,84 +1,54 @@
 'use strict';
-const countColumns=[4,5,6,7,8,9,10,11,12,13,15];
-function summarizeParticipation(rows){
- const counts=Object.fromEntries(countColumns.map(col=>[col,0]));let male=0,female=0,unknown=0,invalid=0;
- for(const row of rows){if(!row[1].trim())continue;
-  const gender=row[2].trim();if(['남','남자','남성'].includes(gender))male++;else if(['여','여자','여성'].includes(gender))female++;else unknown++;
-  for(const col of countColumns){const value=row[col].trim().toUpperCase();if(['O','Ｏ','○','◯','⭕'].includes(value))counts[col]++;else if(value&&!['X','Ｘ','×'].includes(value))invalid++;}
- }
- const known=male+female;
- return {counts,male,female,unknown,invalid,malePercent:known?Math.round(male/known*100):0,femalePercent:known?100-Math.round(male/known*100):0};
+const KEY='gdk-project-v2',LEGACY='gdk-project-v1';
+const views={ops:'운영 현황',rooms:'숙박 배정',money:'정산'};
+function fresh(){return {version:2,meta:{project:'',period:'',place:'',resort:'',manager:''},days:['1일차','2일차','3일차'],dives:['','',''],labels:{17:'다이빙',18:'렌탈',19:'숙박',20:'기타비용',21:'단체지원',23:'기납부'},support:'지원 항목 / 적용 대상: \n미지원 항목: \n교통비 / 공동비용 분담 기준: ',results:'정화 포인트: \n수거량:    kg\n처리처 / 증빙 위치: ',roomNotes:'객실 유형 / 객실 수: \n배정 및 숙소 특이사항: ',moneyNotes:'',rows:Array.from({length:25},()=>Array(28).fill(''))};}
+function migrate(old){const s=fresh();if(!old||!Array.isArray(old.values))return s;const v=old.values;s.meta.project=v[1]||'';s.meta.period=v[2]||'';s.meta.place=v[3]||'';s.meta.manager=v[4]||'';s.days=v.slice(5,8).map((x,i)=>x||s.days[i]);const cols=Array.from({length:26},(_,i)=>i).filter(i=>![0,22,24].includes(i));s.rows.forEach((r,i)=>cols.forEach((c,j)=>r[c]=v[8+i*23+j]||''));s.roomNotes='객실 유형 / 객실 수 / 배정 인원 / 비고'+'\n'+v.slice(583,587).join(' / ')+'\n'+v.slice(587,591).join(' / ');s.support=v[591]||s.support;s.results=v[592]||s.results;return s;}
+const isO=v=>['O','Ｏ','○','◯','⭕'].includes(String(v).trim().toUpperCase());
+const num=v=>Number(v)||0,fmt=v=>Math.round(v).toLocaleString('ko-KR');
+function stats(s){const r=s.rows.filter(r=>r[1].trim()),counts={};[4,5,6,7,8,9,10,11,12,13].forEach(c=>counts[c]=r.filter(x=>isO(x[c])).length);const male=r.filter(x=>['남','남자','남성'].includes(x[2].trim())).length,female=r.filter(x=>['여','여자','여성'].includes(x[2].trim())).length;let diveTotal=0,missing=false;[5,7,9].forEach((c,i)=>{if(counts[c]&&s.dives[i]==='')missing=true;diveTotal+=counts[c]*num(s.dives[i]);});return {people:r.length,male,female,unknown:r.length-male-female,counts,diveTotal,missing,lodgers:r.filter(x=>[4,6,8].some(c=>isO(x[c]))).length,nights:counts[4]+counts[6]+counts[8]};}
+function cost(r){const total=[17,18,19,20].reduce((n,c)=>n+num(r[c]),0),due=total-num(r[21]);return {total,due,balance:due-num(r[23])};}
+function getColumns(view){return view==='ops'?[0,1,2,3,5,7,9,10,11,12,13,14,25]:view==='rooms'?[0,1,2,4,6,8,16,26]:[0,1,17,18,19,20,21,22,23,24,27];}
+function label(c){return ({0:'번호',1:'성명',2:'성별',3:'타입',4:state.days[0]+' 숙박',5:state.days[0]+' 다이빙',6:state.days[1]+' 숙박',7:state.days[1]+' 다이빙',8:state.days[2]+' 숙박',9:state.days[2]+' 다이빙',10:'산소',11:'더블탱크 렌탈',12:'DPV',13:'촬영',14:'출발',16:'객실',22:'개인부담',24:'잔액 ±',25:'운영 비고',26:'숙박 비고',27:'정산 비고'})[c]??state.labels[c]??'';}
+function value(r,c,i){return c===0?i+1:c===22?fmt(cost(r).due):c===24?fmt(cost(r).balance):r[c];}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+let state=fresh(),view='ops',loadMessage='내용을 입력하면 자동 저장됩니다.';
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));document.getElementById('saveStatus').textContent='이 브라우저에 자동 저장됨 · '+new Date().toLocaleTimeString('ko-KR');}catch{document.getElementById('saveStatus').textContent='자동 저장 불가 · 창을 닫기 전에 PDF/JPG를 저장하세요.';}}
+function metadata(){document.getElementById('settings').innerHTML=Object.entries({project:'프로젝트명',period:'기간',place:'장소',resort:'리조트',manager:'담당자'}).map(([key,text])=>`<label>${text}<input data-meta="${key}" value="${esc(state.meta[key])}" aria-label="${text}"></label>`).join('');}
+function heroHTML(){const n=stats(state);return `<article><small>프로젝트명</small><strong>${esc(state.meta.project||'프로젝트명 입력')}</strong></article><article><small>기간</small><strong>${esc(state.meta.period||'기간 입력')}</strong></article><article><small>리조트</small><strong>${esc(state.meta.resort||'리조트 입력')}</strong><div class="sub">${esc(state.meta.place)}</div></article><article><small>참여 인원 / 최대 25명</small><strong>${n.people}명</strong></article>`;}
+function countCards(){const n=stats(state),known=n.male+n.female,ratio=known?`남 ${Math.round(n.male/known*100)}% · 여 ${100-Math.round(n.male/known*100)}%`:'비율 —';return [['남녀 인원',`남 ${n.male}명 · 여 ${n.female}명`,`${ratio} · 미확인 ${n.unknown}명`],['다이빙 횟수',n.missing?'횟수 입력 필요':`${fmt(n.diveTotal)}회`,state.days.map((d,i)=>`${d} ${n.counts[[5,7,9][i]]}명`).join(' · ')],['숙박 인원',`${n.lodgers}명`,state.days.map((d,i)=>`${d} ${n.counts[[4,6,8][i]]}명`).join(' · ')],['더블탱크 렌탈',`더블 ${n.counts[11]}세트`,`산소 ${n.counts[10]} · DPV ${n.counts[12]} · 촬영 ${n.counts[13]}`]];}
+function moneyCards(){const totals=state.rows.map(cost);return [['비용 합계',fmt(totals.reduce((a,x)=>a+x.total,0))+'원',''],['개인 부담 합계',fmt(totals.reduce((a,x)=>a+x.due,0))+'원',''],['추가 납부',fmt(totals.reduce((a,x)=>a+Math.max(0,x.balance),0))+'원',''],['환급',fmt(totals.reduce((a,x)=>a+Math.max(0,-x.balance),0))+'원','']];}
+function renderCards(){return (view==='money'?moneyCards():countCards()).map(([a,b,c])=>`<article><small>${esc(a)}</small><strong>${esc(b)}</strong><span>${esc(c)}</span></article>`).join('');}
+function totals(c){return c===22?state.rows.reduce((a,r)=>a+cost(r).due,0):c===24?state.rows.reduce((a,r)=>a+cost(r).balance,0):state.rows.reduce((a,r)=>a+num(r[c]),0);}
+function foot(){const n=stats(state);return getColumns(view).map(c=>{let v='';if(c===1)v=view==='money'?'합계':'참여 / 사용';if(view==='money'&&c>=17&&c<=24)v=fmt(totals(c));else if(view!=='money'&&c in n.counts)v=c===11?`더블 ${n.counts[c]}세트`:n.counts[c]+'명';return `<td>${v}</td>`;}).join('');}
+function controls(r,c,i){if([0,22,24].includes(c))return esc(value(r,c,i));if(c===3)return `<select data-row="${i}" data-col="3" aria-label="${i+1}번 타입">${['','싱글','더블','CCR','텐더'].map(t=>`<option value="${t}" ${r[c]===t?'selected':''}>${t||'선택'}</option>`).join('')}</select>`;return `<input data-row="${i}" data-col="${c}" aria-label="${i+1}번 ${esc(label(c))}" ${view==='money'&&c>=17&&c<=23?'type="number" min="0" step="1"':''} value="${esc(r[c])}">`;}
+function notes(){return view==='ops'?[['support','지원 기준 및 특이사항'],['results','정화 실적 및 마감']]:view==='rooms'?[['roomNotes','숙소 및 객실 배정 안내']]:[['moneyNotes','정산 메모']];}
+function render(){document.getElementById('tabs').innerHTML=Object.entries(views).map(([key,title])=>`<button class="${view===key?'active':''}" onclick="switchView('${key}')">${title}</button>`).join('');const cols=getColumns(view);document.getElementById('paper').innerHTML=`<div class="brand">GHOST DIVING KOREA / PROJECT REPORT</div><h1>${views[view]}</h1><div class="hero">${heroHTML()}</div>${view==='ops'?`<div class="daysettings">${state.days.map((d,i)=>`<label><input data-day="${i}" value="${esc(d)}" aria-label="${i+1}일차 날짜"> 1인당 <input data-dives="${i}" type="number" min="0" step="1" value="${esc(state.dives[i])}" aria-label="${i+1}일차 다이빙 횟수"> 회</label>`).join('')}</div>`:''}<table id="grid"><colgroup>${cols.map(c=>`<col style="width:${c===0?40:c===1?85:c>=25?175:c===16?130:90}px">`).join('')}</colgroup><thead><tr>${cols.map(c=>`<th>${view==='money'&&state.labels[c]!==undefined?`<input data-label="${c}" value="${esc(label(c))}" aria-label="정산 항목 이름">`:`<span data-heading="${c}">${esc(label(c))}</span>`}</th>`).join('')}</tr></thead><tbody>${state.rows.map((r,i)=>`<tr class="${r[3]==='텐더'?'tender':''}">${cols.map(c=>`<td data-cell="${c}" class="${view==='ops'&&[5,10,25].includes(c)?'section':''}">${controls(r,c,i)}</td>`).join('')}</tr>`).join('')}</tbody><tfoot><tr>${foot()}</tr></tfoot></table>${view==='money'?'<p class="settlement-note">개인부담 = 비용 4개 항목 합계 − 지원액 · 잔액 = 개인부담 − 기납부 · 양수: 추가 납부 / 음수: 환급</p>':''}<div class="countcards">${renderCards()}</div><div class="notes">${notes().map(([key,title])=>`<section><h2>${title}</h2><textarea data-note="${key}" aria-label="${title}">${esc(state[key])}</textarea></section>`).join('')}</div><footer><span>${esc(state.meta.place)} · ${views[view]}</span><span>GHOST DIVING KOREA</span></footer>`;}
+function refresh(){document.querySelector('.hero').innerHTML=heroHTML();document.querySelector('.countcards').innerHTML=renderCards();document.querySelector('#grid tfoot tr').innerHTML=foot();document.querySelectorAll('[data-heading]').forEach(e=>e.textContent=label(num(e.dataset.heading)));document.querySelectorAll('#grid tbody tr').forEach((tr,i)=>{tr.classList.toggle('tender',state.rows[i][3]==='텐더');[22,24].forEach(c=>{const td=tr.querySelector(`[data-cell="${c}"]`);if(td)td.textContent=value(state.rows[i],c,i);});});}
+function switchView(next){view=next;render();}
+function sortNames(){const collator=new Intl.Collator('ko',{numeric:true,sensitivity:'base'});state.rows.sort((a,b)=>(!a[1].trim())-(!b[1].trim())||collator.compare(a[1].trim(),b[1].trim()));render();persist();}
+function newProject(){if(!confirm('현재 작업을 초기화할까요? 필요한 PDF/JPG를 먼저 저장하세요.'))return;state=fresh();metadata();render();persist();}
+function reportCanvas(){const canvas=document.createElement('canvas');canvas.width=4960;canvas.height=3508;const ctx=canvas.getContext('2d');ctx.scale(3.1,3.1);ctx.fillStyle='white';ctx.fillRect(0,0,1600,1132);
+ const box=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
+ function text(value,x,y,w,h,size=13,color='#183e49',bold=false,align='left'){value=String(value??'');ctx.fillStyle=color;ctx.textBaseline='middle';for(let fs=size;fs>=2;fs-=.5){ctx.font=`${bold?'600':'400'} ${fs}px "Apple SD Gothic Neo","Malgun Gothic",sans-serif`;let lines=[];for(const para of value.split('\n')){let line='';for(const ch of para){if(ctx.measureText(line+ch).width>w-12&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}if(lines.length*fs*1.3>h-4)continue;lines.forEach((line,i)=>{const tw=ctx.measureText(line).width;ctx.fillText(line,align==='center'?x+(w-tw)/2:align==='right'?x+w-6-tw:x+6,y+(h-lines.length*fs*1.3)/2+fs*1.3*(i+.5));});return;}}
+ text('GHOST DIVING KOREA / PROJECT REPORT',30,15,1400,24,12,'#087f87',true);text(views[view],30,40,1400,38,26,'#183e49',true);
+ const n=stats(state),hero=[['프로젝트명',state.meta.project],['기간',state.meta.period],['리조트',state.meta.resort+(state.meta.place?'\n'+state.meta.place:'')],['참여 인원',n.people+'명']];hero.forEach(([a,b],i)=>{const x=30+i*386;box(x,88,374,93,'#edf7f7');text(a,x+8,93,356,22,12);text(b||'—',x+8,116,356,58,24,'#183e49',true);});
+ if(view==='ops')text(state.days.map((d,i)=>`${d} · 1인당 ${state.dives[i]===''?'미설정':state.dives[i]+'회'}`).join('     /     '),30,186,1540,27,12);
+ const cols=getColumns(view),raw=cols.map(c=>c===0?40:c===1?85:c>=25?175:c===16?130:90),sum=raw.reduce((a,b)=>a+b,0),ws=raw.map(w=>w/sum*1540),xs=[30];ws.forEach(w=>xs.push(xs.at(-1)+w));const y=220;
+ cols.forEach((c,j)=>{box(xs[j],y,ws[j],36,'#244c5a');text(label(c),xs[j],y,ws[j],36,12,'white',true,'center');});
+ state.rows.forEach((r,i)=>{const yy=y+36+i*23;box(30,yy,1540,23,r[3]==='텐더'?'#fff0cc':i%2?'#f5f9fa':'white');cols.forEach((c,j)=>{let v=value(r,c,i);if(view==='money'&&[17,18,19,20,21,23].includes(c)&&v!=='')v=fmt(num(v));text(v,xs[j],yy,ws[j],23,12,'#183e49',false,view==='money'&&c>=17&&c<=24?'right':'center');});box(30,yy+22.5,1540,.5,'#dfe8ec');});
+ const fy=y+36+575;box(30,fy,1540,28,'#e5f1f0');cols.forEach((c,j)=>{let v=c===1?(view==='money'?'합계':'참여 / 사용'):'';if(view==='money'&&c>=17&&c<=24)v=fmt(totals(c));else if(view!=='money'&&c in n.counts)v=c===11?`더블 ${n.counts[c]}세트`:n.counts[c]+'명';text(v,xs[j],fy,ws[j],28,11,'#183e49',true,'center');});
+ if(view==='ops'){[5,10,25].forEach(c=>{const x=xs[cols.indexOf(c)];box(x,y,6,fy+28-y,'white');});}
+ (view==='money'?moneyCards():countCards()).forEach(([a,b,c],i)=>{let x=30+i*386;box(x,869,374,82,'#f0f5f7');text(a,x+8,874,358,19,12);text(b,x+8,895,358,28,21,'#183e49',true);text(c,x+8,923,358,24,11);});
+ const noteItems=notes();noteItems.forEach(([key,title],i)=>{const w=noteItems.length===1?1540:i===0?920:590,x=i===0?30:980;box(x,967,w,2,'#087f87');text(title,x,974,w,25,17,'#183e49',true);text(state[key],x,1000,w,90,15);});
+ if(view==='money')text('개인부담 = 비용 4개 항목 합계 − 지원액 · 잔액 = 개인부담 − 기납부 · 양수: 추가 납부 / 음수: 환급',30,1095,1540,18,10);
+ text('GHOST DIVING KOREA · '+views[view]+' · 1 / 1',30,1113,1540,15,10,'#718991',false,'right');return canvas;
 }
-const counterRow=document.createElement('tr');counterRow.className='counter-row';
-for(let col=0;col<26;col++){const td=document.createElement('td');if(col===0){td.colSpan=4;td.id='genderCounter';col=3;}else if(countColumns.includes(col)){td.id='count-'+col;}counterRow.append(td);}
-document.querySelector('#roster tfoot').append(counterRow);
-function updateCounters(){
- const summary=summarizeParticipation([...document.querySelector('#roster tbody').rows].map(row=>[...row.cells].map(cell=>cellText(cell))));
- countColumns.forEach(col=>document.getElementById('count-'+col).textContent=summary.counts[col]);
- const ratio=summary.male+summary.female?`남 ${summary.malePercent}% · 여 ${summary.femalePercent}%`:'비율 —';
- document.getElementById('genderCounter').textContent=`남 ${summary.male}명 · 여 ${summary.female}명\n${ratio} · 미확인 ${summary.unknown}명`;
- const notice=document.getElementById('countNotice');if(notice)notice.textContent='이름이 있는 행만 집계 · O=참여/사용, X=미참여/미사용 · 빈칸 제외 · 남녀 비율은 성별 확인 인원 기준'+(summary.invalid?` · O/X 외 입력 ${summary.invalid}칸 확인 필요 (숫자 0은 제외)`:'');
-}
-document.querySelectorAll('#roster tbody tr').forEach(row=>{
- const old=row.cells[3].querySelector('input');const select=document.createElement('select');
- select.setAttribute('aria-label',old.getAttribute('aria-label'));
- [['','선택'],['싱글','싱글'],['더블','더블'],['CCR','CCR'],['텐더','텐더']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);});
- select.value=old.value;old.replaceWith(select);
-});
-function updateTypeRows(){document.querySelectorAll('#roster tbody tr').forEach(row=>row.classList.toggle('tender-row',row.cells[3].querySelector('select').value==='텐더'));}
-function sortByName(){
- const rows=[...document.querySelector('#roster tbody').rows];
- const collator=new Intl.Collator('ko',{numeric:true,sensitivity:'base'});
- const records=rows.map((row,index)=>({index,values:[...row.querySelectorAll('input,select')].map(input=>input.value)}));
- records.sort((a,b)=>{const an=a.values[0].trim(),bn=b.values[0].trim();return (!an)-(!bn)||collator.compare(an,bn)||a.index-b.index;});
- rows.forEach((row,index)=>{row.querySelectorAll('input,select').forEach((input,col)=>{input.value=records[index].values[col];});});
- calc();updateTypeRows();persist();
-}
-document.addEventListener('keydown',event=>{
- if(!['Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key)||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
- const input=event.target;if(!['INPUT','SELECT'].includes(input.tagName)||!input.closest('.page'))return;
- if(event.key!=='Enter'&&!input.closest('#roster tbody'))return;
- event.preventDefault();
- const cell=input.closest('td'),row=cell?.parentElement,body=row?.parentElement;
- let next;
- if(body?.matches('#roster tbody')){
-  const rows=[...body.rows];
-  if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
-   const controls=[...row.querySelectorAll('input,select')];next=controls[controls.indexOf(input)+(event.key==='ArrowLeft'?-1:1)];
-  }else{const index=rows.indexOf(row)+(event.key==='ArrowUp'||(event.key==='Enter'&&event.shiftKey)?-1:1);
-   next=rows[index]?.cells[cell.cellIndex]?.querySelector('input,select');}
- }else{
-  const inputs=[...document.querySelectorAll('.page input')];
-  next=inputs[inputs.indexOf(input)+(event.shiftKey?-1:1)];
- }
- if(next){next.focus();if(next.tagName==='INPUT'&&next.type!=='number')next.select();}
-});
-const storageKey='gdk-project-v1';
-const statusNode=document.getElementById('saveStatus');
-const editable=()=>[...document.querySelectorAll('.page input,.page select,.page [contenteditable]')];
-const blankState=editable().map(e=>['INPUT','SELECT'].includes(e.tagName)?e.value:e.innerText);
-function restore(values){editable().forEach((e,i)=>{if(typeof values[i]!=='string')return;if(['INPUT','SELECT'].includes(e.tagName))e.value=values[i];else {e.innerText=values[i];}});calc();updateTypeRows();updateCounters();}
-function persist(){updateCounters();try{localStorage.setItem(storageKey,JSON.stringify({version:1,values:editable().map(e=>['INPUT','SELECT'].includes(e.tagName)?e.value:e.innerText)}));statusNode.textContent='이 브라우저에 자동 저장됨 · '+new Date().toLocaleTimeString('ko-KR');}catch(e){statusNode.textContent='자동 저장 불가 · 창을 닫기 전에 PDF/JPG를 저장하세요.';}}
-try{let saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved&&saved.version===1&&Array.isArray(saved.values)){restore(saved.values);statusNode.textContent='저장된 작업을 불러왔습니다.';}else statusNode.textContent='내용을 입력하면 이 브라우저에 자동 저장됩니다.';}catch(e){statusNode.textContent='저장된 작업을 읽지 못했습니다. 출력 후 보관하세요.';}
-document.addEventListener('input',()=>{updateTypeRows();persist();});document.addEventListener('change',()=>{updateTypeRows();persist();});updateTypeRows();
-document.addEventListener('paste',e=>{if(e.target.isContentEditable){e.preventDefault();let text=e.clipboardData.getData('text/plain');const selection=window.getSelection();if(!selection.rangeCount)return;const range=selection.getRangeAt(0);range.deleteContents();const node=document.createTextNode(text);range.insertNode(node);range.setStartAfter(node);range.collapse(true);selection.removeAllRanges();selection.addRange(range);persist();}});
-updateCounters();
-function newProject(){if(!confirm('현재 작업을 초기화하고 새 프로젝트를 시작할까요? 필요한 PDF/JPG를 먼저 저장하세요.'))return;restore(blankState);persist();}
-function cellText(cell){return cell.querySelector('input,select')?.value??cell.innerText;}
-function reportCanvas(){const canvas=document.createElement('canvas');canvas.width=4960;canvas.height=3508;const ctx=canvas.getContext('2d');ctx.scale(3.1,3.1);const W=1600,H=3508/3.1;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);const ink='#163b48',teal='#007f86';
-function box(x,y,w,h,color){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
-function text(value,x,y,w,h,size=12,color=ink,bold=false,align='left'){value=String(value??'');ctx.fillStyle=color;ctx.textBaseline='middle';let lines=[];for(let fontSize=size;fontSize>=2;fontSize-=.5){ctx.font=`${bold?'600':'400'} ${fontSize}px "Apple SD Gothic Neo","Malgun Gothic",sans-serif`;lines=[];for(let para of value.split('\n')){let line='';for(let ch of para){if(ctx.measureText(line+ch).width>w-10&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}if(lines.length*fontSize*1.3<=h-4){const lh=fontSize*1.3;lines.forEach((line,i)=>{let tw=ctx.measureText(line).width;ctx.fillText(line,align==='right'?x+w-5-tw:align==='center'?x+(w-tw)/2:x+5,y+(h-lines.length*lh)/2+lh*(i+.5));});return;}}}
-text('GHOST DIVING KOREA / PROJECT REPORT',32,20,1250,22,12,teal,true);text('해양정화 프로젝트 · 운영 & 정산',32,43,1300,45,29,ink,true);text(document.querySelector('.tag').innerText,1380,47,185,35,13,teal,true,'right');box(32,95,1536,3,teal);
-document.querySelectorAll('.meta label').forEach((e,i)=>text(e.firstChild.textContent+'  '+e.querySelector('input').value,32+i*384,105,376,30,13));
-document.querySelectorAll('.card').forEach((e,i)=>{let x=32+i*309;box(x,143,298,76,i===4?'#fff4df':'#edf7f7');text(e.querySelector('small').innerText,x+8,148,282,24,11);text(e.querySelector('strong').innerText,x+8,174,282,28,23,ink,true);if(i===4)text(document.getElementById('refund').innerText,x+8,201,282,14,10);});
-text('01  참여자별 운영 및 정산',32,225,850,24,14,ink,true);text('단위: 원 · 하단 O 집계 / 이름 있는 행 기준',950,225,610,24,11,ink,false,'right');
-const widths=[27,58,30,46,...Array(6).fill(32),...Array(4).fill(32),42,36,56,...Array(8).fill(78),100];let sum=widths.reduce((a,b)=>a+b,0);const ws=widths.map(v=>v/sum*1536),xs=[32];ws.forEach(w=>xs.push(xs.at(-1)+w));const y=252;
-[[0,4,'참여자'],[4,10,'숙박 / 다이빙'],[10,17,'장비 · 이동 · 객실'],[17,25,'개인별 정산 · 원'],[25,26,'비고']].forEach(([a,b,t])=>{box(xs[a],y,xs[b]-xs[a],25,ink);text(t,xs[a],y,xs[b]-xs[a],25,11,'#ffffff',true,'center');});
-const days=[...document.querySelectorAll('#roster th[contenteditable]')].map(e=>e.innerText);const headers=['번호','성명','성별','타입',...days.flatMap(d=>[d+'\n숙박',d+'\n다이빙']),'산소','렌탈','DPV','촬영','출발','블렌딩','객실','다이빙','렌탈','숙박','기타비용','단체지원','개인부담','기납부','잔액 ±','기타'];
-headers.forEach((t,j)=>{box(xs[j],y+25,ws[j],35,'#eaf2f4');text(t,xs[j],y+25,ws[j],35,10,ink,true,'center');});
-[...document.querySelector('#roster tbody').rows].forEach((row,i)=>{let yy=y+60+i*25;box(32,yy,1536,25,cellText(row.cells[3])==='텐더'?'#fff0cc':i%2?'#f5f9fa':'#ffffff');[...row.cells].forEach((cell,j)=>{let val=cellText(cell);if(j>=17&&j<25&&val!=='')val=Number(String(val).replaceAll(',','')).toLocaleString('ko-KR');text(val,xs[j],yy,ws[j],25,11,ink,false,j>=17&&j<25?'right':'center');});box(32,yy+24.5,1536,.5,'#dce7e9');});
-const totalY=y+60+625;box(32,totalY,1536,26,'#dff0ee');text('합계 · 잔액 양수 = 추가 납부 / 음수 = 환급',32,totalY,xs[17]-32,26,11,ink,true);for(let i=0;i<8;i++)text(document.getElementById('t'+i).innerText,xs[i+17],totalY,ws[i+17],26,11,ink,true,'right');
-box(32,totalY+26,1536,32,'#fff4df');text(document.getElementById('genderCounter').textContent,32,totalY+26,xs[4]-32,32,10,ink,true,'center');countColumns.forEach(col=>text(document.getElementById('count-'+col).textContent,xs[col],totalY+26,ws[col],32,11,ink,true,'center'));
-const by=1004;document.querySelectorAll('.panel').forEach((panel,i)=>{let x=32+i*517;box(x,by,502,2,teal);text(panel.querySelector('h2').innerText,x,by+5,502,22,13,ink,true);let body='';if(i===0){body=[...panel.querySelectorAll('tr')].map(tr=>[...tr.cells].map(cell=>cell.innerText).join(' / ')).join('\n');body+='\n'+panel.querySelector('p').innerText;}else body=[...panel.querySelectorAll('p')].map(p=>p.innerText).join('\n');text(body,x,by+30,502,70,11);});text('GHOST DIVING KOREA · '+new Date().toLocaleDateString('ko-KR')+' · 1 / 1',32,1105,1536,18,10,'#70858b',false,'right');return canvas;}
+async function downloadReport(type){const invalid=document.querySelector('input:invalid');if(invalid){alert('수량과 금액은 0 이상의 정수로 입력하세요.');invalid.focus();return;}const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{persist();await document.fonts.ready;const canvas=reportCanvas();const jpg=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('이미지 생성 실패')),'image/jpeg',.96));const blob=type==='pdf'?makePDF(new Uint8Array(await jpg.arrayBuffer()),canvas.width,canvas.height):jpg;const name=((state.meta.project||'고스트다이빙코리아')+'_'+views[view]).replace(/[\\/:*?"<>|]/g,'_');const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name+'.'+type;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}catch(e){alert('저장하지 못했습니다. '+e.message);}finally{buttons.forEach(b=>b.disabled=false);}}
 function makePDF(jpeg,width,height){const enc=new TextEncoder(),chunks=[],offsets=[0];let length=0;const add=data=>{let b=typeof data==='string'?enc.encode(data):data;chunks.push(b);length+=b.length;};const obj=(n,body)=>{offsets[n]=length;add(`${n} 0 obj\n${body}\nendobj\n`);};add('%PDF-1.4\n');obj(1,'<< /Type /Catalog /Pages 2 0 R >>');obj(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');obj(3,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1190.55 841.89] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');offsets[4]=length;add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`);add(jpeg);add('\nendstream\nendobj\n');let content='q\n1190.55 0 0 841.89 0 0 cm\n/Im0 Do\nQ\n';obj(5,`<< /Length ${enc.encode(content).length} >>\nstream\n${content}endstream`);let start=length;add('xref\n0 6\n0000000000 65535 f \n');for(let i=1;i<=5;i++)add(String(offsets[i]).padStart(10,'0')+' 00000 n \n');add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`);return new Blob(chunks,{type:'application/pdf'});}
-async function downloadReport(type){const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);try{if(document.querySelector('input:invalid')){alert('비용은 0 이상의 정수로 입력하세요. 표시된 입력칸을 확인해 주세요.');return;}persist();await document.fonts.ready;const canvas=reportCanvas();const jpg=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('이미지를 만들지 못했습니다.')),'image/jpeg',.96));const blob=type==='pdf'?makePDF(new Uint8Array(await jpg.arrayBuffer()),canvas.width,canvas.height):jpg;let name=document.querySelector('.meta input').value.trim()||'고스트다이빙코리아_프로젝트';name=name.replace(/[\\/:*?"<>|]/g,'_');let a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name+'.'+type;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}catch(e){alert('파일을 저장하지 못했습니다. '+e.message);}finally{buttons.forEach(b=>b.disabled=false);}}
+
+//BOOT
+try{const saved=JSON.parse(localStorage.getItem(KEY)||'null');if(saved&&saved.version===2&&saved.rows.length===25){state=saved;loadMessage='저장된 작업을 불러왔습니다.';}else{const old=JSON.parse(localStorage.getItem(LEGACY)||'null');if(old){state=migrate(old);loadMessage='이전 작업을 새 구성으로 불러왔습니다.';}}}catch{loadMessage='저장 내용을 불러오지 못했습니다. 기존 저장 데이터는 유지됩니다.';}
+metadata();render();document.getElementById('saveStatus').textContent=loadMessage;
+function onEdit(e){const d=e.target.dataset,v=e.target.value;if(d.meta)state.meta[d.meta]=v;else if(d.row!==undefined)state.rows[num(d.row)][num(d.col)]=v;else if(d.day!==undefined)state.days[num(d.day)]=v;else if(d.dives!==undefined)state.dives[num(d.dives)]=v;else if(d.label)state.labels[d.label]=v;else if(d.note)state[d.note]=v;else return;refresh();persist();}
+document.addEventListener('input',onEdit);document.addEventListener('change',onEdit);
+document.addEventListener('keydown',e=>{if(!['Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)||e.isComposing||e.keyCode===229||e.altKey||e.ctrlKey||e.metaKey)return;const target=e.target;if(target.dataset.row===undefined)return;e.preventDefault();let next;const row=num(target.dataset.row),col=num(target.dataset.col);if(['ArrowLeft','ArrowRight'].includes(e.key)){const inputs=[...target.closest('tr').querySelectorAll('input,select')];next=inputs[inputs.indexOf(target)+(e.key==='ArrowLeft'?-1:1)];}else{const n=row+(e.key==='ArrowUp'||e.key==='Enter'&&e.shiftKey?-1:1);next=document.querySelector(`[data-row="${n}"][data-col="${col}"]`);}if(next){next.focus();if(next.tagName==='INPUT'&&next.type!=='number')next.select();}});
