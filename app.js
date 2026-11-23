@@ -72,7 +72,7 @@ function sortNames(){orderParticipantRows();render();persist();}
 function finishNameEdit(){const active=document.activeElement,row=active?.dataset?.row!==undefined?state.rows[Number(active.dataset.row)]:null,col=active?.dataset?.col;if(!orderParticipantRows())return;render();persist();if(row&&col!==undefined){const index=state.rows.indexOf(row),next=document.querySelector(`[data-row="${index}"][data-col="${col}"]`);if(next){next.focus();if(next.tagName==='INPUT'&&next.type!=='number')next.select();}}}
 
 function newProject(){if(!protectDraft())return;state=fresh();view='people';metadata();render();persist();}
-function reportCanvas(teamPage=0){const canvas=document.createElement('canvas');canvas.width=4960;canvas.height=3508;const ctx=canvas.getContext('2d');ctx.scale(3.1,3.1);ctx.fillStyle='white';ctx.fillRect(0,0,1600,1132);
+function reportCanvas(teamPage=0){if(view==='money')return settlementCanvas();const canvas=document.createElement('canvas');canvas.width=4960;canvas.height=3508;const ctx=canvas.getContext('2d');ctx.scale(3.1,3.1);ctx.fillStyle='white';ctx.fillRect(0,0,1600,1132);
  const box=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
  function text(value,x,y,w,h,size=12,color='#164a60',bold=false,align='left'){value=String(value??'');ctx.fillStyle=color;ctx.textBaseline='middle';for(let fs=size;fs>=2;fs-=.5){ctx.font=`${bold?'600':'400'} ${fs}px "Apple SD Gothic Neo","Malgun Gothic",sans-serif`;let lines=[];for(const para of value.split('\n')){let line='';for(const ch of para){if(ctx.measureText(line+ch).width>w-12&&line){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}if(lines.length*fs*1.3>h-4)continue;lines.forEach((line,i)=>{const tw=ctx.measureText(line).width;ctx.fillText(line,align==='center'?x+(w-tw)/2:align==='right'?x+w-6-tw:x+6,y+(h-lines.length*fs*1.3)/2+fs*1.3*(i+.5));});return;}}
  paintLogo(ctx);text('GHOST DIVING KOREA / PROJECT REPORT',30,15,1400,24,12,'#08758f',true);text(views[view],30,40,1400,38,26,'#164a60',true);
@@ -249,3 +249,48 @@ function refreshMoneyPage(){
 
 function expenseQuickLine(){return '<div class="expense-line-scroll"><div class="expense-line">'+[17,18,19,31,20,32,33,34,35,36,37].map((c,k)=>'<div class="expense-cell"><input class="expense-name" data-label="'+c+'" value="'+esc(label(c))+'" placeholder="추가 비용 '+Math.max(1,k-4)+'" aria-label="비용 항목명 '+(k+1)+'"><label><input class="expense-amount" type="number" min="0" step="1" data-total="'+c+'" value="'+esc(state.sharedTotals?.[c]??'')+'" placeholder="총액" aria-label="'+esc(label(c)||'추가 비용')+' 총액"><span>원</span></label><small data-cost-current="'+c+'"></small>'+(c===17?'<small>멤버 총액</small>':'')+'</div>').join('')+'</div></div>';}
 function expenseAllocationSettings(){return '<div class="expense-setting-grid">'+expenseColumns.map(c=>{const people=moneyPeople(),selected=people.filter(({r})=>!excludedCosts(r).includes(c)).length;return '<section><strong data-heading="'+c+'">'+esc(label(c))+'</strong>'+categoryControl(c)+(c===17?'<p>멤버 리조트 총액 · 개인 자동 배분 제외</p>':'<details><summary>배분 대상 <span data-allocation-count="'+c+'">'+selected+'</span>명</summary>'+people.map(({r,i})=>'<label class="allocation-person"><input type="checkbox" data-allocation="'+c+'" data-person-index="'+i+'" '+(excludedCosts(r).includes(c)?'':'checked')+'>'+esc(r[1])+'</label>').join('')+'</details>')+'</section>';}).join('')+'</div>';}
+
+function settlementPrintData(){
+ const rows=settlementRows(), cols=[1,...expenseColumns.filter(c=>totals(c)!==0)];
+ if(rows.some(r=>num(r[21])))cols.push(21);
+ if(rows.some(r=>num(r[23])))cols.push(23);
+ cols.push(24);
+ const guestOnly=!!settlementSelection&&settlementSelection.length>0&&settlementSelection.every(i=>i>=MEMBER_LIMIT);
+ const gross=expenseColumns.reduce((n,c)=>n+totals(c),0);
+ return {rows,cols,guestOnly,gross};
+}
+function settlementCanvas(){
+ const {rows,cols,guestOnly,gross}=settlementPrintData(),W=1600,margin=32,usable=W-margin*2,rowH=36,headH=48,tableY=180;
+ const hasNotes=!!state.moneyNotes.trim(),summaryH=guestOnly?100:164;
+ const H=tableY+headH+Math.max(1,rows.length)*rowH+44+summaryH+(hasNotes?100:0)+90;
+ const canvas=document.createElement('canvas');canvas.width=W*2;canvas.height=H*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);
+ const box=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
+ function text(v,x,y,w,h,size=19,bold=false,color='#164a60',align='left'){
+  v=String(v??'');ctx.fillStyle=color;ctx.textBaseline='middle';
+  let lines=[],fs=size;
+  for(;fs>=12;fs-=.5){ctx.font=(bold?'600 ':'400 ')+fs+'px "Apple SD Gothic Neo","Malgun Gothic",sans-serif';lines=[];for(const para of v.split('\n')){let line='';for(const ch of para){if(line&&ctx.measureText(line+ch).width>w-16){lines.push(line);line=ch;}else line+=ch;}lines.push(line);}if(lines.length*fs*1.25<=h-6)break;}
+  lines.forEach((line,i)=>{const width=ctx.measureText(line).width;ctx.fillText(line,align==='right'?x+w-8-width:align==='center'?x+(w-width)/2:x+8,y+h/2+(i-(lines.length-1)/2)*fs*1.25);});
+ }
+ box(0,0,W,H,'white');paintLogo(ctx);
+ text('GHOST DIVING KOREA / SETTLEMENT',margin,16,1250,24,15,true);
+ text('정산',margin,45,1200,44,32,true);
+ const names=rows.length+'명'+(settlementSelection?' · 선택 대상':' · 멤버 '+rows.filter(r=>state.rows.indexOf(r)<MEMBER_LIMIT).length+' / 객원 '+rows.filter(r=>state.rows.indexOf(r)>=MEMBER_LIMIT).length);
+ const heads=[['프로젝트',state.meta.project],['기간',state.meta.period],['리조트',state.meta.resort+(state.meta.place?' · '+state.meta.place:'')],['정산 인원',names]];
+ heads.forEach(([title,v],i)=>{const x=margin+i*(usable/4);box(x,100,usable/4-10,66,'#e7f7fc');text(title,x+6,104,usable/4-22,20,13);text(v||'—',x+6,126,usable/4-22,34,21,true);});
+ const weights=cols.map(c=>c===1?130:c===24?190:115),sum=weights.reduce((a,b)=>a+b,0),ws=weights.map(w=>w/sum*usable),xs=[margin];ws.forEach(w=>xs.push(xs.at(-1)+w));
+ cols.forEach((c,j)=>{box(xs[j],tableY,ws[j],headH,c===24?'#164a60':'#08758f');text(c===24?'최종 납부':label(c),xs[j],tableY,ws[j],headH,18,true,'white','center');});
+ let y=tableY+headH,previousGuest=false;
+ rows.forEach((r,i)=>{const index=state.rows.indexOf(r),guest=index>=MEMBER_LIMIT,balance=cost(r).balance;box(margin,y,usable,rowH,r[3]==='텐더'?'#fff0cc':i%2?'#eef8fc':'white');if(guest&&!previousGuest&&i>0)box(margin,y,usable,2,'#8ab6c7');previousGuest=guest;
+ cols.forEach((c,j)=>{let v=c===1?r[1]:c===24?(balance<0?'환급 '+fmt(-balance):fmt(balance)):c===17&&index<MEMBER_LIMIT&&allocationActive(17)?'—':num(r[c])?fmt(num(r[c])):'—';
+ text(v,xs[j],y,ws[j],rowH,c===24?23:19,c===24||c===1,c===24&&balance<0?'#a74626':'#164a60',c===1?'center':'right');});
+ box(margin,y+rowH-1,usable,1,'#dbeaf0');y+=rowH;});
+ if(!rows.length){text('등록된 참여자가 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
+ box(margin,y,usable,40,'#d9f1f8');cols.forEach((c,j)=>text(c===1?'합계':fmt(totals(c)),xs[j],y,ws[j],40,c===24?23:19,true,'#164a60',c===1?'center':'right'));y+=56;
+ if(guestOnly){const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#e7f7fc');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#08758f','right');y+=88;}
+ else{for(const [title,v] of [['총 발생 비용',gross],...(settlementSelection?[]:[['프로젝트 지원금',-projectSupportAmount()]])]){text(title,margin,y,usable/2,30,20);text(fmt(v)+'원',margin+usable/2,y,usable/2,30,22,true,'#164a60','right');y+=32;}box(margin,y+6,usable,66,'#e7f7fc');text(settlementSelection?'대상자 발생 비용':'지원금 차감 후 최종 비용',margin+12,y+6,usable/2,66,24,true);text(fmt(gross-(settlementSelection?0:projectSupportAmount()))+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#08758f','right');y+=86;}
+ if(hasNotes){text('정산 메모',margin,y,usable,26,18,true);text(state.moneyNotes,margin,y+26,usable,64,18);y+=100;}
+ box(margin,y+8,usable,48,'#e7f7fc');text('정산 입금 계좌 | '+SETTLEMENT_ACCOUNT,margin+8,y+8,usable-16,48,22,true);
+ // Crop to the actual last content; no fixed paper whitespace or explanatory footer.
+ const result=document.createElement('canvas');result.width=canvas.width;result.height=Math.min(canvas.height,Math.ceil((y+72)*2));result.getContext('2d').drawImage(canvas,0,0);return result;
+}
+
