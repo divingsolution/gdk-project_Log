@@ -62,7 +62,7 @@ function settlementCheck(){if(settlementSelection)return `대상자 비용 소�
 function settlementExportTools(){const guests=state.rows.map((r,i)=>({r,i})).filter(x=>x.i>=MEMBER_LIMIT&&x.r[1].trim());return `<section class="settlement-export"><strong>정산서 저장</strong> <button onclick="downloadReport('png','members')">멤버 전체 PNG</button> <select id="guestExportPerson" aria-label="객원 정산 대상"><option value="">객원 선택</option>${guests.map(({r,i})=>`<option value="${i}">${esc(r[1])}</option>`).join('')}</select> <button onclick="downloadReport('png','guest')">객원 개인 PNG</button></section>`;}
 function moneyCards(){
  const a=classifiedExpenseSummary(),money=v=>fmt(v)+'원';
- const items=[['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 비용 (부가세 포함)',a.card],['카드 공급가',a.cardBase],['카드 부가세 10%',a.vat],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),['총 지출 (부가세 포함)',a.gross]];
+ const items=[['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 비용 (부가세 포함)',a.card],['카드 공급가',a.cardBase],['카드 부가세 10%',a.vat],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),['총 지출 (부가세 포함)',a.gross],...(!settlementSelection?gdkFundingBreakdown():[])];
  if(settlementSelection){const balance=settlementRows().reduce((n,r)=>n+cost(r).balance,0);return [...items.map(([k,v])=>[k,money(v),'']),[balance<0?'최종 환급액':'최종 납부액',money(Math.abs(balance)),'']];}
  items.push(['외부 지원금액',a.external]);return [...items.map(([k,v])=>[k,money(v),'']),['외부 지원 차감 후 총비용',money(a.gross-a.external),'']];
 }
@@ -252,11 +252,11 @@ function onEdit(e){
  const {fundingColumn,fundingField}=e.target.dataset;
  if(fundingColumn!==undefined){
   const column=Number(fundingColumn);
-  if(!expenseColumns.includes(column)||!['gdk','external','gdkVat','externalVat'].includes(fundingField)||!e.target.validity.valid)return;
+  if(!expenseColumns.includes(column)||!['gdk','external','gdkVat','externalVat','gdkFull'].includes(fundingField)||!e.target.validity.valid)return;
   state.expenseFunding??={};
   const entry=state.expenseFunding[column]??(state.expenseFunding[column]=editableFunding(column));
   if(fundingField==='gdkVat'){delete entry.card;entry.gdkVat=e.target.checked;}
-  else if(fundingField==='externalVat')entry.externalVat=e.target.checked;
+  else if(fundingField==='externalVat'||fundingField==='gdkFull')entry[fundingField]=e.target.checked;
   else if(e.target.value==='')delete entry[fundingField];
   else entry[fundingField]=e.target.value;
   refreshMoneyPage();persist();return;
@@ -319,6 +319,17 @@ function refreshMoneyPage(){
   el.disabled=hasFunding(column)||el.dataset.expenseSupport!==undefined&&isCardExpense(column);
  });
  document.querySelectorAll('[data-funding-info]').forEach(el=>el.textContent=fundingInfo(Number(el.dataset.fundingInfo)));
+ document.querySelectorAll('[data-split-field]').forEach(el=>{
+  el.hidden=isFullyFunded(Number(el.dataset.splitField));
+ });
+ document.querySelectorAll('[data-funding-field="gdk"],[data-funding-field="external"]').forEach(el=>{
+  const column=Number(el.dataset.fundingColumn);
+  const isFull=state.expenseFunding?.[column]?.gdkFull===true;
+  el.readOnly=isFull;
+  const key=el.dataset.fundingField;
+  if(isFull||el.dataset.autoFull==='true')el.value=isFull?expenseFunding(column)[key]:editableFunding(column)[key]??'';
+  el.dataset.autoFull=String(isFull);
+ });
  target.innerHTML=renderCards();
 }
 
@@ -342,9 +353,11 @@ function expenseQuickLine(){
    <div class="expense-figures">
     <label class="expense-field"><span>총액 (공급가)</span><input type="number" min="0" step="1" inputmode="numeric" data-total="${column}"
      value="${esc(state.sharedTotals?.[column]??'')}" placeholder="0" aria-label="${name} 총액"></label>
-    <div class="expense-field"><span>나눌 인원</span>${splitCountField(column)}</div>
+    <div class="expense-field" data-split-field="${column}"><span>나눌 인원</span>${splitCountField(column)}</div>
    </div>
    <small data-cost-current="${column}"></small>${column===17?'<small>멤버 기준 · 객원 별도</small>':''}
+   <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="gdkFull"
+    aria-label="${name} 고다 전액 지원" ${funding.gdkFull?'checked':''}>고다 전액 지원</label>
    ${supportField('gdk','고다',funding.gdkVat??(num(funding.card)>0&&num(funding.card)===num(funding.gdk)))}
    ${supportField('external','외부',funding.externalVat)}
    <small class="expense-result" data-funding-info="${column}"></small>
@@ -366,7 +379,7 @@ function settlementPrintData(){
 }
 function settlementCanvas(){
  const {rows,cols,guestOnly,gross}=settlementPrintData(),W=1600,margin=32,usable=W-margin*2,rowH=36,headH=48,tableY=180;
- const hasNotes=!!state.moneyNotes.trim(),summaryH=guestOnly?220:492;
+ const hasNotes=!!state.moneyNotes.trim(),summaryH=guestOnly?220:492+(!settlementSelection?gdkFundingBreakdown().length*32:0);
  const H=tableY+headH+Math.max(1,rows.length)*rowH+44+summaryH+(hasNotes?100:0)+90;
  const canvas=document.createElement('canvas');canvas.width=W*2;canvas.height=H*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);
  const box=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
@@ -392,7 +405,7 @@ function settlementCanvas(){
  if(!rows.length){text('등록된 참여자가 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
  box(margin,y,usable,40,'#f5e7dc');cols.forEach((c,j)=>text(c===1?'합계':fmt(hasFunding(c)?rows.reduce((sum,row)=>sum+rowExpenseDue(row,c,state.rows.indexOf(row)),0):totals(c)),xs[j],y,ws[j],40,c===24?23:19,true,'#34434a',c===1?'center':'right'));y+=56;
  if(guestOnly){text('다이빙솔루션 카드결제 (부가세 포함)',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().card)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;text('고다 지원비 합계',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
- else{const a=classifiedExpenseSummary();for(const [title,v] of [['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 (부가세 포함)',a.card],['총 지출 (부가세 포함)',a.gross],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),...(settlementSelection?[]:[['외부 지원금액',a.external]])]){text(title,margin,y,usable/2,30,20);text(fmt(v)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
+ else{const a=classifiedExpenseSummary();for(const [title,v] of [['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 (부가세 포함)',a.card],['총 지출 (부가세 포함)',a.gross],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),...(settlementSelection?[]:[['외부 지원금액',a.external],...gdkFundingBreakdown()])]){text(title,margin,y,usable/2,30,20);text(fmt(v)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
 
  if(hasNotes){text('정산 메모',margin,y,usable,26,18,true);text(state.moneyNotes,margin,y+26,usable,64,18);y+=100;}
  box(margin,y+8,usable,48,'#fff2e7');text('정산 입금 계좌 | '+SETTLEMENT_ACCOUNT,margin+8,y+8,usable-16,48,22,true);
@@ -534,11 +547,12 @@ function expenseFunding(column,s=state){
  const base=entered!==undefined&&entered!==''?num(entered):
   s.rows.reduce((sum,row)=>sum+(row[1].trim()?num(row[column]):0),0);
  const entry=s.expenseFunding?.[column]??{};
- const gdk=Math.min(base,Math.max(0,num(entry.gdk)));
+ const full=entry.gdkFull===true;
+ const gdk=full?base:Math.min(base,Math.max(0,num(entry.gdk)));
  const external=Math.min(base-gdk,Math.max(0,num(entry.external)));
  const card=entry.gdkVat===true?gdk:Math.min(gdk,Math.max(0,num(entry.card)));
  return {base,gdk,external,card,vat:withVat(card).vat,externalVat:entry.externalVat===true?withVat(external).vat:0,balance:base-gdk-external,
-  limited:gdk!==num(entry.gdk)||external!==num(entry.external)||(!entry.gdkVat&&card!==num(entry.card))};
+  limited:(!full&&gdk!==num(entry.gdk))||(!full&&external!==num(entry.external))||(!entry.gdkVat&&card!==num(entry.card))};
 }
 function rowExpenseDue(row,column,index){
  if(!hasFunding(column))return rowUsesCard(column,index)||isExpenseSupported(column)?0:num(row[column]);
@@ -551,7 +565,7 @@ function rowExpenseDue(row,column,index){
 function fundingInfo(column){
  if(!hasFunding(column)){if(isCardExpense(column))return '기존 다솔카드 '+fmt(cardAmount(column).total)+'원';if(isExpenseSupported(column))return '기존 고다 전액 지원';return '—';}
  const f=expenseFunding(column);
- return `적용액: 고다 ${fmt(f.gdk+f.vat)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다솔카드 ${fmt(f.card+f.vat)}원 (부가세 ${fmt(f.vat)}원)`+
+ return `${isFullyFunded(column)?'전액 지원 · ':''}적용액: 고다 ${fmt(f.gdk+f.vat)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다솔카드 ${fmt(f.card+f.vat)}원 (부가세 ${fmt(f.vat)}원)`+
   (f.limited?' · 입력액이 한도를 초과해 적용액을 제한했습니다.':'');
 }
 
@@ -596,4 +610,25 @@ function removeExpenseLine(column){
   if(excluded.includes(column))row[43]=JSON.stringify(excluded.filter(c=>c!==column));
  }
  render();persist();
+}
+
+function isFullyFunded(column){
+ if(!hasFunding(column))return isExpenseSupported(column)||isCardExpense(column);
+ const f=expenseFunding(column);
+ return state.expenseFunding[column].gdkFull===true||f.base>0&&f.balance===0;
+}
+function gdkFundingBreakdown(){
+ const lines=[];
+ for(const column of expenseColumns){
+  const f=expenseFunding(column);
+  const gdk=hasFunding(column)?f.gdk+f.vat:isExpenseSupported(column)?totals(column):0;
+  const markedFull=state.expenseFunding?.[column]?.gdkFull===true;
+  if(!gdk&&!markedFull&&!(hasFunding(column)&&isFullyFunded(column)))continue;
+  const status=markedFull||gdk&&(!hasFunding(column)||f.gdk===f.base)?'고다 전액 지원':
+   isFullyFunded(column)?gdk?'전액 지원 · 고다·외부 분담':'외부 전액 지원':'고다 부분 지원';
+  const category=categoryNames[state.categories[column]]||'기타';
+  const name=label(column)||'추가비용';
+  lines.push([status+' / '+category+(name!==category?' · '+name:''),gdk]);
+ }
+ return lines;
 }
