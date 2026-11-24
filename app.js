@@ -325,17 +325,28 @@ function refreshMoneyPage(){
 
 function expenseQuickLine(){
  const columns=visibleExpenseColumns();
- const headers=['비용 항목','총액 (공급가)','나눌 인원 / 1인당','고다 지원액','고다 부가세 10%','외부 지원액','외부 부가세 10%','지원 적용 결과'];
- const rows=columns.map(column=>{
+ const cards=columns.map(column=>{
   const funding=editableFunding(column),name=esc(label(column)||'추가비용');
-  const amount=(field,title)=>`<input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-funding-column="${column}" data-funding-field="${field}" aria-label="${name} ${title}" value="${esc(funding[field]??'')}">`;
-  const vat=(field,title,checked)=>`<input type="checkbox" data-funding-column="${column}" data-funding-field="${field}" aria-label="${name} ${title} 부가세 10%" ${checked?'checked':''}>`;
-  return `<tr class="expense-cell"><td><input data-label="${column}" value="${esc(label(column))}" placeholder="추가비용 이름" aria-label="${name} 항목명"></td>
-   <td><input type="number" min="0" step="1" inputmode="numeric" data-total="${column}" value="${esc(state.sharedTotals?.[column]??'')}" placeholder="총액" aria-label="${name} 총액"><small data-cost-current="${column}"></small>${column===17?'<small>멤버 기준 · 객원 별도</small>':''}</td>
-   <td>${splitCountField(column)}</td><td>${amount('gdk','고다 지원액')}</td><td>${vat('gdkVat','고다',funding.gdkVat??(num(funding.card)>0&&num(funding.card)===num(funding.gdk)))}</td>
-   <td>${amount('external','외부 지원액')}</td><td>${vat('externalVat','외부',funding.externalVat)}</td><td><small data-funding-info="${column}"></small></td></tr>`;
+  const supportField=(field,title,checked)=>`<div class="expense-support-line">
+   <label class="expense-field"><span>${title} 지원액</span><input type="number" min="0" step="1" inputmode="numeric" placeholder="0"
+    data-funding-column="${column}" data-funding-field="${field}" aria-label="${name} ${title} 지원액" value="${esc(funding[field]??'')}"></label>
+   <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="${field}Vat"
+    aria-label="${name} ${title} 부가세 10%" ${checked?'checked':''}>부가세 10%</label>
+  </div>`;
+  return `<section class="expense-cell expense-tile" aria-label="${name}">
+   <input class="expense-title" data-label="${column}" value="${esc(label(column))}" placeholder="추가비용 이름" aria-label="${name} 항목명">
+   <div class="expense-figures">
+    <label class="expense-field"><span>총액 (공급가)</span><input type="number" min="0" step="1" inputmode="numeric" data-total="${column}"
+     value="${esc(state.sharedTotals?.[column]??'')}" placeholder="0" aria-label="${name} 총액"></label>
+    <div class="expense-field"><span>나눌 인원</span>${splitCountField(column)}</div>
+   </div>
+   <small data-cost-current="${column}"></small>${column===17?'<small>멤버 기준 · 객원 별도</small>':''}
+   ${supportField('gdk','고다',funding.gdkVat??(num(funding.card)>0&&num(funding.card)===num(funding.gdk)))}
+   ${supportField('external','외부',funding.externalVat)}
+   <small class="expense-result" data-funding-info="${column}"></small>
+  </section>`;
  });
- return `<div class="money-overflow"><table class="money-table funding-table"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>
+ return `<div class="expense-tiles">${cards.join('')}</div>
   <button type="button" class="secondary" onclick="addExpenseLine()" ${columns.length===expenseColumns.length?'disabled':''}>＋ 추가비용</button>`;
 }
 function expenseAllocationSettings(){
