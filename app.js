@@ -293,7 +293,7 @@ function settlementRoster(people){
 function renderMoneyPage(){
  const people=moneyPeople();
  document.getElementById('paper').innerHTML='<div class="brand">GHOST DIVING KOREA / SETTLEMENT</div><h1>프로젝트 정산</h1><div class="hero">'+heroHTML()+'</div>'+settlementExportTools()+settlementRoster(people)+
- '<section class="money-section"><h2>발생 비용 입력</h2><p>금액과 나눌 인원을 입력하면 1인당 금액을 바로 볼 수 있습니다.</p>'+expenseQuickLine()+'<details class="expense-details"><summary>비용 분류 설정</summary>'+expenseAllocationSettings()+'</details><details class="expense-details"><summary>개인별 비용 상세 · 객원 다이빙비 입력</summary>'+moneyExpenseTable(visibleExpenseColumns())+'</details></section>'+
+ '<section class="money-section"><h2>발생 비용 입력</h2><p>금액과 나눌 인원을 입력하면 1인당 금액을 바로 볼 수 있습니다.</p>'+expenseQuickLine()+'<details class="expense-details"><summary>개인별 비용 상세 · 객원 다이빙비 입력</summary>'+moneyExpenseTable(visibleExpenseColumns())+'</details></section>'+
  '<section class="money-section advance-section"><h2>개인 선결제</h2><div class="advance-grid">'+people.map(({r,i})=>'<label class="advance-entry"><span>'+esc(r[1])+'</span>'+moneyInput(r,i,23)+'<span>원</span></label>').join('')+'</div><p id="advanceTotal"></p></section>'+
  '<section class="money-section"><h2>개인별 추가 납부 / 환급</h2><p>비지원·카드결제 제외 항목의 개인 배정 비용 − 개인별 고다지원금 − 선결제액. 기존 1,000원 단위 올림 기준을 유지합니다. 멤버 리조트 총액은 개인에게 자동 배분하지 않습니다.</p><div class="money-overflow"><table class="money-table"><thead><tr><th>성명</th><th>배정 비용</th><th>개인별 고다지원금</th><th>개인 부담금</th><th>개인 선결제</th><th>올림 차액</th><th>정산 결과</th><th>정산 비고</th></tr></thead><tbody>'+people.map(({r,i})=>'<tr><td>'+esc(r[1])+'</td><td data-person-total="'+i+'"></td><td>'+moneyInput(r,i,21)+'</td><td data-person-due="'+i+'"></td><td data-person-advance="'+i+'"></td><td data-person-rounding="'+i+'"></td><td data-person-balance="'+i+'"></td><td class="memo">'+moneyInput(r,i,27)+'</td></tr>').join('')+'</tbody></table></div><div id="personalTotals" class="money-totals"></div></section>'+
  '<section class="money-section money-summary"><h2>프로젝트 최종 요약</h2><label class="support-input">항목 외 추가 외부 지원금 <input type="number" min="0" step="1" data-project-support aria-label="항목 외 추가 외부 지원금" value="'+esc(state.projectSupport||'')+'" placeholder="0"> 원</label><p>고다 부가세는 다솔카드 결제에 반영하고, 외부 부가세는 외부 지원금과 총지출에 반영합니다. 항목에 이미 입력한 외부 지원금은 이 칸에 다시 입력하지 마세요. 개인별 고다지원금과 선결제는 개인별 납부·환급에서 반영합니다.</p><div id="moneySummary"></div></section>'+
@@ -334,7 +334,11 @@ function expenseQuickLine(){
     aria-label="${name} ${title} 부가세 10%" ${checked?'checked':''}>부가세 10%</label>
   </div>`;
   return `<section class="expense-cell expense-tile" aria-label="${name}">
-   <input class="expense-title" data-label="${column}" value="${esc(label(column))}" placeholder="추가비용 이름" aria-label="${name} 항목명">
+   <div class="expense-tile-heading">
+    <input class="expense-title" data-label="${column}" value="${esc(label(column))}" placeholder="추가비용 이름" aria-label="${name} 항목명">
+     ${categoryControl(column)}
+   ${column>=32?`<button type="button" class="secondary expense-remove" onclick="removeExpenseLine(${column})" aria-label="${name} 삭제">삭제</button>`:''}
+   </div>
    <div class="expense-figures">
     <label class="expense-field"><span>총액 (공급가)</span><input type="number" min="0" step="1" inputmode="numeric" data-total="${column}"
      value="${esc(state.sharedTotals?.[column]??'')}" placeholder="0" aria-label="${name} 총액"></label>
@@ -349,11 +353,7 @@ function expenseQuickLine(){
  return `<div class="expense-tiles">${cards.join('')}</div>
   <button type="button" class="secondary" onclick="addExpenseLine()" ${columns.length===expenseColumns.length?'disabled':''}>＋ 추가비용</button>`;
 }
-function expenseAllocationSettings(){
- return '<div class="expense-setting-grid">'+visibleExpenseColumns().map(column=>
-  '<section><strong data-heading="'+column+'">'+esc(label(column))+'</strong>'+categoryControl(column)+'</section>'
- ).join('')+'</div>';
-}
+
 
 function settlementPrintData(){
  const rows=settlementRows(), cols=[1,...expenseColumns.filter(c=>(!isCardExpense(c)||c===17&&allocationActive(17)&&rows.some(r=>state.rows.indexOf(r)>=MEMBER_LIMIT&&num(r[17])))&&totals(c)!==0)];
@@ -576,4 +576,24 @@ function editableFunding(column){
  if(!isExpenseSupported(column)&&!isCardExpense(column))return {};
  const base=expenseFunding(column).base;
  return isCardExpense(column)?{gdk:String(base),gdkVat:true}:{gdk:String(base)};
+}
+
+function removeExpenseLine(column){
+ if(column<32||!expenseColumns.includes(column)||!visibleExpenseColumns().includes(column))return;
+ const hasEntries=Boolean(state.labels[column]?.trim()||allocationActive(column)||hasFunding(column)||
+  state.expenseSupport?.[column]||state.expenseVat?.[column]||state.expenseSplitCounts?.[column]||
+  state.rows.some(row=>String(row[column]??'').trim()));
+ if(hasEntries&&!confirm((label(column)||'추가비용')+' 항목을 삭제할까요? 입력한 금액과 지원 기록도 정산에서 빠집니다.'))return;
+ state.enabledExtraExpenses=(state.enabledExtraExpenses??[]).filter(c=>c!==column);
+ state.labels[column]='';
+ state.categories[column]='other';
+ for(const key of ['sharedTotals','expenseFunding','expenseSupport','expenseVat','expenseSplitCounts']){
+  if(state[key])delete state[key][column];
+ }
+ for(const row of state.rows){
+  row[column]='';
+  const excluded=excludedCosts(row);
+  if(excluded.includes(column))row[43]=JSON.stringify(excluded.filter(c=>c!==column));
+ }
+ render();persist();
 }
