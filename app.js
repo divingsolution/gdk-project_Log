@@ -59,7 +59,7 @@ function allocationHeader(c){if(!expenseColumns.includes(c))return '';if(c===17)
 function recalculateAllocations(){for(const c of expenseColumns){if(c===17||!allocationActive(c))continue;const total=Number(state.sharedTotals[c]);if(!Number.isSafeInteger(total)||total<0)continue;const pool=c===17?state.rows.slice(0,MEMBER_LIMIT):state.rows;const included=pool.filter(r=>r[1].trim()&&!excludedCosts(r).includes(c));pool.forEach(r=>r[c]='');if(!included.length)continue;const base=Math.floor(total/included.length),extra=total%included.length;included.forEach((r,i)=>r[c]=String(base+(i<extra?1:0)));}}
 function updateAllocationInputs(){document.querySelectorAll('[data-row][data-col]').forEach(el=>{const c=Number(el.dataset.col);if(expenseColumns.includes(c)){el.value=state.rows[Number(el.dataset.row)][c];el.readOnly=allocationActive(c)&&!(c===17&&Number(el.dataset.row)>=MEMBER_LIMIT);}});document.querySelectorAll('[data-allocation-count]').forEach(el=>{const c=Number(el.dataset.allocationCount);el.textContent=state.rows.filter(r=>r[1].trim()&&!excludedCosts(r).includes(c)).length;});}
 function settlementCheck(){if(settlementSelection)return `대상자 비용 소계 ${fmt(expenseColumns.reduce((n,c)=>n+totals(c),0))}원 · 올림 차액 ${fmt(totals(45))}원`;const actual=expenseColumns.reduce((n,c)=>n+settlementAverage(state,c).total,0),expected=expenseColumns.reduce((n,c)=>n+(allocationActive(c)?num(state.sharedTotals[c])+(c===17?state.rows.slice(MEMBER_LIMIT).reduce((n,r)=>n+num(r[17]),0):0):totals(c)),0);return `비용 검산 · 입력 합계 ${fmt(expected)}원 / 소계 합계 ${fmt(actual)}원 / 차액 ${fmt(actual-expected)}원`; }
-function settlementExportTools(){const guests=state.rows.map((r,i)=>({r,i})).filter(x=>x.i>=MEMBER_LIMIT&&x.r[1].trim());return `<section class="settlement-export"><strong>정산서 저장</strong> <button onclick="downloadReport('png','members')">멤버 전체 PNG</button> <select id="guestExportPerson" aria-label="객원 정산 대상"><option value="">객원 선택</option>${guests.map(({r,i})=>`<option value="${i}">${esc(r[1])}</option>`).join('')}</select> <button onclick="downloadReport('png','guest')">객원 개인 PNG</button></section>`;}
+function settlementExportTools(){const guests=state.rows.map((r,i)=>({r,i})).filter(x=>x.i>=MEMBER_LIMIT&&x.r[1].trim());return `<section class="settlement-export"><button type="button" class="secondary" onclick="openSettlementCalculator()">계산기</button><strong>정산서 저장</strong> <button onclick="downloadReport('png','members')">멤버 전체 PNG</button> <select id="guestExportPerson" aria-label="객원 정산 대상"><option value="">객원 선택</option>${guests.map(({r,i})=>`<option value="${i}">${esc(r[1])}</option>`).join('')}</select> <button onclick="downloadReport('png','guest')">객원 개인 PNG</button></section>`;}
 function moneyCards(){
  const a=classifiedExpenseSummary(),money=v=>fmt(v)+'원';
  const items=[['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 비용 (부가세 포함)',a.card],['카드 공급가',a.cardBase],['카드 부가세 10%',a.vat],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),['총 지출 (부가세 포함)',a.gross],...(!settlementSelection?gdkFundingBreakdown():[])];
@@ -101,7 +101,7 @@ function reportCanvas(teamPage=0){if(view==='money')return settlementCanvas();
   const isRoom=view==='rooms';
   const widths=isRoom?[35,130,50,275]:[40,210,60,180];
   const headers=['번호','성명','성별',isRoom?'날짜별 숙박':'다이빙타입'];
-  for(const {x,y,name,people} of assignment.cards){
+  for(const {x,y,name,people,note,noteHeight} of assignment.cards){
    box(x,y,490,34,'#b94c16');text(name+' · '+people.length+'명',x,y,490,34,20,'white',true);
    let xx=x;
    headers.forEach((header,j)=>{text(header,xx,y+34,widths[j],26,15,'#34434a',true,'center');xx+=widths[j];});
@@ -111,6 +111,11 @@ function reportCanvas(teamPage=0){if(view==='money')return settlementCanvas();
     box(x,yy,490,height,row[3]==='텐더'?'#fff0cc':j%2?'#faf6f1':'white');
     let xx=x;values.forEach((v,k)=>{text(v,xx,yy,widths[k],height,k===3&&isRoom?15:18,'#34434a',false,k===3&&isRoom?'left':'center');xx+=widths[k];});
    });
+   if(noteHeight){
+    const noteY=y+60+people.reduce((sum,p)=>sum+p.height,0)+3;
+    box(x,noteY,490,noteHeight,'#fff2e7');
+    text('비고: '+note,x+3,noteY,484,noteHeight,14,'#34434a');
+   }
   }
   text('배정 '+assignment.assigned+'명 · 미배정 '+(n.people-assignment.assigned)+'명',30,assignment.bottom+5,1540,25,13,'#34434a',true);
   if(assignment.notes.length){
@@ -173,7 +178,7 @@ function roomSlots(s,k){const slots=Array(assignmentCapacity(s,'rooms',k)).fill(
 function initializeRooms(s){const migrate=!Array.isArray(s.roomNames);s.roomNames=Array.isArray(s.roomNames)&&s.roomNames.length?s.roomNames.slice(0,PERSON_LIMIT).map(String):Array.from({length:6},(_,i)=>`${i+1}호실`);s.rows.forEach(r=>{while(r.length<47)r.push('');});if(migrate){s.roomNames=[];const groups=new Map();s.rows.forEach(r=>{if(!r[1].trim()||!r[16].trim())return;const name=r[16].trim();let k=groups.get(name);if(k===undefined){k=s.roomNames.length;s.roomNames.push(name);groups.set(name,k);}if(s.rows.filter(x=>x[44]===String(k+1)).length>=6){k=s.roomNames.length;s.roomNames.push(name+' (추가)');groups.set(name,k);}r[44]=String(k+1);});while(s.roomNames.length<6)s.roomNames.push(`${s.roomNames.length+1}호실`);}s.roomNames.forEach((_,k)=>roomSlots(s,k).forEach((i,j)=>{if(i>=0)s.rows[i][46]=String(j);}));return s;}
 function assignRoomSlot(s,k,slot,newIndex){if(!Number.isInteger(k)||k<0||k>=s.roomNames.length||!Number.isInteger(slot)||slot<0||slot>=assignmentCapacity(s,'rooms',k))return '유효한 객실 칸을 선택하세요.';const old=roomSlots(s,k)[slot];if(newIndex!==''){const i=Number(newIndex);if(!Number.isInteger(i)||!s.rows[i]?.[1].trim())return '참여인원에 등록한 성명을 선택하세요.';if(s.rows[i][44]&&i!==old)return '이미 다른 객실에 배정된 인원입니다. 기존 배정을 해제한 뒤 선택하세요.';}if(old>=0){s.rows[old][44]='';s.rows[old][46]='';s.rows[old][16]='';}if(newIndex!==''){const r=s.rows[Number(newIndex)];r[44]=String(k+1);r[46]=String(slot);r[16]=s.roomNames[k];}return '';}
 function lodgingSummary(r){const parts=roomColumns().filter(c=>isStay(stayValue(r,c))).map(c=>`${label(c)} ${isO(stayValue(r,c))?'분류 필요':stayValue(r,c)}`);return parts.join(' / ')||'숙박 미선택';}
-function roomTable(k){const slots=roomSlots(state,k);return `<section class="team-sheet room-sheet"><header><input data-room-name="${k}" value="${esc(state.roomNames[k])}" placeholder="방 이름 입력" aria-label="${k+1}번째 방 이름"><b>${slots.filter(i=>i>=0).length} / ${slots.length}명</b><button type="button" class="secondary slot-add" aria-label="${k+1}번 객실 인원 추가" onclick="addAssignmentSlot('rooms',${k})" ${slots.length>=PERSON_LIMIT?'disabled':''}>＋ 인원</button></header><table class="team-table room-table"><colgroup><col style="width:6%"><col style="width:28%"><col style="width:8%"><col style="width:58%"></colgroup><thead><tr><th>번호</th><th>성명</th><th>성별</th><th>날짜별 숙박</th></tr></thead><tbody>${slots.map((i,j)=>{const r=i>=0?state.rows[i]:null;return `<tr><td>${j+1}</td><td><select data-room-slot="${j}" data-room="${k}" aria-label="${k+1}호실 ${j+1}번 성명"><option value="">성명 선택</option>${state.rows.map((p,n)=>p[1].trim()?`<option value="${n}" ${i===n?'selected':''} ${p[44]&&n!==i?'disabled':''}>${esc(p[1])}${n>=MEMBER_LIMIT?' · 객원':''}</option>`:'').join('')}</select></td><td>${esc(r?.[2]||'')}</td><td class="room-stays">${r?roomColumns().filter(c=>isStay(stayValue(r,c))).map(c=>`<span class="${stayClass(stayValue(r,c))}">${esc(label(c))} ${esc(isO(stayValue(r,c))?'분류 필요':stayValue(r,c))}</span>`).join('')||'숙박 미선택':'—'}</td></tr>`;}).join('')}</tbody></table></section>`;}
+function roomTable(k){const slots=roomSlots(state,k);return `<section class="team-sheet room-sheet"><header><input data-room-name="${k}" value="${esc(state.roomNames[k])}" placeholder="방 이름 입력" aria-label="${k+1}번째 방 이름"><b>${slots.filter(i=>i>=0).length} / ${slots.length}명</b><button type="button" class="secondary slot-add" aria-label="${k+1}번 객실 인원 추가" onclick="addAssignmentSlot('rooms',${k})" ${slots.length>=PERSON_LIMIT?'disabled':''}>＋ 인원</button></header><table class="team-table room-table"><colgroup><col style="width:6%"><col style="width:28%"><col style="width:8%"><col style="width:58%"></colgroup><thead><tr><th>번호</th><th>성명</th><th>성별</th><th>날짜별 숙박</th></tr></thead><tbody>${slots.map((i,j)=>{const r=i>=0?state.rows[i]:null;return `<tr><td>${j+1}</td><td><select data-room-slot="${j}" data-room="${k}" aria-label="${k+1}호실 ${j+1}번 성명"><option value="">성명 선택</option>${state.rows.map((p,n)=>p[1].trim()?`<option value="${n}" ${i===n?'selected':''} ${p[44]&&n!==i?'disabled':''}>${esc(p[1])}${n>=MEMBER_LIMIT?' · 객원':''}</option>`:'').join('')}</select></td><td>${esc(r?.[2]||'')}</td><td class="room-stays">${r?roomColumns().filter(c=>isStay(stayValue(r,c))).map(c=>`<span class="${stayClass(stayValue(r,c))}">${esc(label(c))} ${esc(isO(stayValue(r,c))?'분류 필요':stayValue(r,c))}</span>`).join('')||'숙박 미선택':'—'}</td></tr>`;}).join('')}</tbody></table>${assignmentCardNoteHTML('rooms',k)}</section>`;}
 function addRoom(){if(state.roomNames.length>=PERSON_LIMIT)return;state.roomNames.push(`${state.roomNames.length+1}호실`);render();persist();}
 function renderRoomPage(){const assigned=state.rows.filter(r=>r[1].trim()&&r[44]).length;document.getElementById('paper').innerHTML=`<img class="report-logo" src="logo.png" alt="GHOST DIVING KOREA"><div class="brand">GHOST DIVING KOREA / ROOM ASSIGNMENT</div><h1>숙박 배정</h1><div class="hero">${heroHTML()}</div><div class="team-tools"><button onclick="addRoom()" ${state.roomNames.length>=PERSON_LIMIT?'disabled':''}>＋ 객실 추가</button><span>기본 5칸 · 배정 ${assigned}명 · 방 이름 직접 입력</span></div><div class="team-tables">${state.roomNames.map((_,k)=>roomTable(k)).join('')}</div><div class="room-unassigned">미배정: ${state.rows.filter(r=>r[1].trim()&&!r[44]).map(r=>esc(r[1])).join(', ')||'없음'}</div><div class="countcards">${renderCards()}</div>${assignmentNotesHTML('rooms')}<footer><span>${esc(state.meta.place)} · 숙박 배정</span><span>GHOST DIVING KOREA</span></footer>`;}
 function columnWidth(c){if(c>=100)return 120;if(c===41)return 150;return c===40?55:c===0?36:c===1?90:[25,26,27,30].includes(c)?155:c===16?110:[4,6,8,28,29].includes(c)?120:c===11?105:80;}
@@ -184,7 +189,7 @@ function teamBoards(){return state.teamNames.map((name,k)=>{const members=state.
 function teamSlots(s,k){const slots=Array(assignmentCapacity(s,'teams',k)).fill(-1),pending=[];s.rows.forEach((r,i)=>{if(r[29]!==String(k+1)||!r[1].trim())return;const n=Number(r[38]);if(r[38]!==''&&Number.isInteger(n)&&n>=0&&n<slots.length&&slots[n]<0)slots[n]=i;else pending.push(i);});pending.forEach(i=>{const free=slots.indexOf(-1);if(free>=0)slots[free]=i;});return slots;}
 function normalizeTeamSlots(s){for(let k=0;k<s.teamNames.length;k++)teamSlots(s,k).forEach((i,j)=>{if(i>=0)s.rows[i][38]=String(j);});return s;}
 function assignTeamSlot(s,k,slot,newIndex){if(!Number.isInteger(k)||k<0||k>=s.teamNames.length||!Number.isInteger(slot)||slot<0||slot>=assignmentCapacity(s,'teams',k))return '유효한 팀 칸을 선택해 주세요.';const slots=teamSlots(s,k),oldIndex=slots[slot];if(newIndex!==''){const i=Number(newIndex);if(!Number.isInteger(i)||!s.rows[i]?.[1].trim())return '명단에 등록된 성명을 선택해 주세요.';if(s.rows[i][29]&&i!==oldIndex)return '이미 팀에 배정된 인원입니다. 기존 배정을 해제한 뒤 선택해 주세요.';}if(oldIndex>=0){s.rows[oldIndex][29]='';s.rows[oldIndex][38]='';}if(newIndex!==''){const r=s.rows[Number(newIndex)];r[29]=String(k+1);r[38]=String(slot);}return '';}
-function teamTable(k){const slots=teamSlots(state,k);return `<section class="team-sheet"><header><input data-team-name="${k}" value="${esc(state.teamNames[k])}" aria-label="${k+1}팀 이름"><b>${slots.filter(i=>i>=0).length} / ${slots.length}명</b><button type="button" class="secondary slot-add" aria-label="${k+1}번 팀 인원 추가" onclick="addAssignmentSlot('teams',${k})" ${slots.length>=PERSON_LIMIT?'disabled':''}>＋ 인원</button></header><table class="team-table"><colgroup><col style="width:7%"><col style="width:39%"><col style="width:11%"><col style="width:43%"></colgroup><thead><tr><th>번호</th><th>성명</th><th>성별</th><th>다이빙타입</th></tr></thead><tbody>${slots.map((i,j)=>{const r=i>=0?state.rows[i]:null;return `<tr class="${r?.[3]==='텐더'?'tender':''}"><td>${j+1}</td><td><select data-team-slot="${j}" data-team="${k}" aria-label="${k+1}팀 ${j+1}번 성명"><option value="">성명 선택</option>${state.rows.map((person,n)=>person[1].trim()?`<option value="${n}" ${n===i?'selected':''} ${person[29]&&n!==i?'disabled':''}>${esc(person[1])}${n>=MEMBER_LIMIT?' · 객원':''}</option>`:'').join('')}</select></td><td>${r?controls(r,2,i):'<input disabled aria-label="성별">'}</td><td>${r?controls(r,3,i):'<select disabled aria-label="타입"><option></option></select>'}</td></tr>`;}).join('')}</tbody></table></section>`;}
+function teamTable(k){const slots=teamSlots(state,k);return `<section class="team-sheet"><header><input data-team-name="${k}" value="${esc(state.teamNames[k])}" aria-label="${k+1}팀 이름"><b>${slots.filter(i=>i>=0).length} / ${slots.length}명</b><button type="button" class="secondary slot-add" aria-label="${k+1}번 팀 인원 추가" onclick="addAssignmentSlot('teams',${k})" ${slots.length>=PERSON_LIMIT?'disabled':''}>＋ 인원</button></header><table class="team-table"><colgroup><col style="width:7%"><col style="width:39%"><col style="width:11%"><col style="width:43%"></colgroup><thead><tr><th>번호</th><th>성명</th><th>성별</th><th>다이빙타입</th></tr></thead><tbody>${slots.map((i,j)=>{const r=i>=0?state.rows[i]:null;return `<tr class="${r?.[3]==='텐더'?'tender':''}"><td>${j+1}</td><td><select data-team-slot="${j}" data-team="${k}" aria-label="${k+1}팀 ${j+1}번 성명"><option value="">성명 선택</option>${state.rows.map((person,n)=>person[1].trim()?`<option value="${n}" ${n===i?'selected':''} ${person[29]&&n!==i?'disabled':''}>${esc(person[1])}${n>=MEMBER_LIMIT?' · 객원':''}</option>`:'').join('')}</select></td><td>${r?controls(r,2,i):'<input disabled aria-label="성별">'}</td><td>${r?controls(r,3,i):'<select disabled aria-label="타입"><option></option></select>'}</td></tr>`;}).join('')}</tbody></table>${assignmentCardNoteHTML('teams',k)}</section>`;}
 function renderTeamPage(){document.getElementById('paper').innerHTML=`<img class="report-logo" src="logo.png" alt="GHOST DIVING KOREA"><div class="brand">GHOST DIVING KOREA / PROJECT REPORT</div><h1>팀 배정</h1><div class="hero">${heroHTML()}</div><div class="team-tools"><button onclick="addTeam()" ${state.teamNames.length>=PERSON_LIMIT?'disabled':''}>＋ 팀 추가</button><span>기본 5칸 · 멤버와 객원 배정 가능</span></div><div class="team-tables">${state.teamNames.map((_,k)=>teamTable(k)).join('')}</div><div class="countcards">${renderCards()}</div>${assignmentNotesHTML('teams')}<footer><span>${esc(state.meta.place)} · 팀 배정</span><span>GHOST DIVING KOREA</span></footer>`;}
 
 
@@ -249,6 +254,17 @@ function makePDF(jpeg,width,height){const enc=new TextEncoder(),chunks=[],offset
 try{const saved=JSON.parse(localStorage.getItem(KEY)||'null');if(saved&&saved.version===2&&[25,35].includes(saved.rows.length)){state=upgrade(saved);loadMessage='저장된 작업을 불러왔습니다.';}else{const old=JSON.parse(localStorage.getItem(LEGACY)||'null');if(old){state=upgrade(migrate(old));loadMessage='이전 작업을 새 구성으로 불러왔습니다.';}}}catch{loadMessage='저장 내용을 불러오지 못했습니다. 기존 저장 데이터는 유지됩니다.';}
 initializeLibrary();normalizeTeamSlots(state);metadata();render();document.getElementById('saveStatus').textContent=loadMessage;
 function onEdit(e){
+ const {assignmentNote,cardIndex}=e.target.dataset;
+ if(assignmentNote==='rooms'||assignmentNote==='teams'){
+  const index=Number(cardIndex);
+  const names=assignmentNote==='rooms'?state.roomNames:state.teamNames;
+  if(!Number.isInteger(index)||index<0||index>=names.length)return;
+  state.assignmentNotes??={};
+  state.assignmentNotes[assignmentNote]??={};
+  state.assignmentNotes[assignmentNote][index]=e.target.value;
+  persist();return;
+ }
+
  const {fundingColumn,fundingField}=e.target.dataset;
  if(fundingColumn!==undefined){
   const column=Number(fundingColumn);
@@ -292,7 +308,7 @@ function settlementRoster(people){
 }
 function renderMoneyPage(){
  const people=moneyPeople();
- document.getElementById('paper').innerHTML='<div class="brand">GHOST DIVING KOREA / SETTLEMENT</div><h1>프로젝트 정산</h1><div class="hero">'+heroHTML()+'</div>'+settlementExportTools()+settlementRoster(people)+
+ document.getElementById('paper').innerHTML='<div class="brand">GHOST DIVING KOREA / SETTLEMENT</div><h1>프로젝트 정산</h1><div class="hero">'+heroHTML()+'</div>'+settlementExportTools()+settlementCalculatorHTML()+settlementRoster(people)+
  '<section class="money-section"><h2>발생 비용 입력</h2><p>금액과 나눌 인원을 입력하면 1인당 금액을 바로 볼 수 있습니다.</p>'+expenseQuickLine()+'<details class="expense-details"><summary>개인별 비용 상세 · 객원 다이빙비 입력</summary>'+moneyExpenseTable(visibleExpenseColumns())+'</details></section>'+
  '<section class="money-section advance-section"><h2>개인 선결제</h2><div class="advance-grid">'+people.map(({r,i})=>'<label class="advance-entry"><span>'+esc(r[1])+'</span>'+moneyInput(r,i,23)+'<span>원</span></label>').join('')+'</div><p id="advanceTotal"></p></section>'+
  '<section class="money-section"><h2>개인별 추가 납부 / 환급</h2><p>비지원·카드결제 제외 항목의 개인 배정 비용 − 개인별 고다지원금 − 선결제액. 기존 1,000원 단위 올림 기준을 유지합니다. 멤버 리조트 총액은 개인에게 자동 배분하지 않습니다.</p><div class="money-overflow"><table class="money-table"><thead><tr><th>성명</th><th>배정 비용</th><th>개인별 고다지원금</th><th>개인 부담금</th><th>개인 선결제</th><th>올림 차액</th><th>정산 결과</th><th>정산 비고</th></tr></thead><tbody>'+people.map(({r,i})=>'<tr><td>'+esc(r[1])+'</td><td data-person-total="'+i+'"></td><td>'+moneyInput(r,i,21)+'</td><td data-person-due="'+i+'"></td><td data-person-advance="'+i+'"></td><td data-person-rounding="'+i+'"></td><td data-person-balance="'+i+'"></td><td class="memo">'+moneyInput(r,i,27)+'</td></tr>').join('')+'</tbody></table></div><div id="personalTotals" class="money-totals"></div></section>'+
@@ -508,35 +524,44 @@ function addAssignmentSlot(kind,k){
 }
 function assignmentReportLayout(kind){
  const isRoom=kind==='rooms',names=isRoom?state.roomNames:state.teamNames;
- const cards=names.map((name,k)=>({name,people:(isRoom?roomSlots(state,k):teamSlots(state,k))
-  .flatMap((index,slot)=>index<0?[]:[{row:state.rows[index],slot,height:isRoom?Math.max(33,Math.ceil(lodgingSummary(state.rows[index]).length/17)*20+10):35}])}))
-  .filter(card=>card.people.length);
+ const cards=names.map((name,k)=>{
+  const note=assignmentCardNote(kind,k).trim();
+  const noteHeight=note?note.split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil(line.length/30))*20,14):0;
+  const people=(isRoom?roomSlots(state,k):teamSlots(state,k))
+   .flatMap((index,slot)=>index<0?[]:[{row:state.rows[index],slot,height:isRoom?Math.max(33,Math.ceil(lodgingSummary(state.rows[index]).length/17)*20+10):35}]);
+  return {name,note,noteHeight,people};
+ }).filter(card=>card.people.length||card.note);
  let y=199;
  for(let first=0;first<cards.length;first+=3){
   const band=cards.slice(first,first+3);
   band.forEach((card,i)=>{card.x=30+i*520;card.y=y;});
-  y+=Math.max(...band.map(card=>60+card.people.reduce((sum,p)=>sum+p.height,0)))+14;
+  y+=Math.max(...band.map(card=>60+card.people.reduce((sum,p)=>sum+p.height,0)+card.noteHeight))+14;
  }
  if(!cards.length)y+=12;
- const values=[state[isRoom?'roomNotes':'teamNotes'],...cards.flatMap(card=>card.people
-  .filter(({row})=>row[isRoom?26:30].trim())
-  .map(({row})=>card.name+' · '+row[1]+' — '+row[isRoom?26:30]))];
+ const values=[state[isRoom?'roomNotes':'teamNotes']];
  const notes=values.filter(value=>value.trim()).map(value=>({value,height:value.split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil(line.length/85))*23,8)}));
  return {cards,notes,bottom:y,assigned:cards.reduce((sum,card)=>sum+card.people.length,0),
   height:y+54+(notes.length?50+notes.reduce((sum,note)=>sum+note.height,0):0)};
 }
 
 function assignmentNotesHTML(kind){
- const isRoom=kind==='rooms',noteKey=isRoom?'roomNotes':'teamNotes',column=isRoom?26:30;
- const names=isRoom?state.roomNames:state.teamNames;
- const people=names.flatMap((name,k)=>(isRoom?roomSlots(state,k):teamSlots(state,k))
-  .filter(index=>index>=0).map(index=>({name,row:state.rows[index],index})));
- return `<section class="assignment-notes"><h2>비고</h2>
-  <textarea data-note="${noteKey}" aria-label="전체 비고" placeholder="전체 비고 입력">${esc(state[noteKey])}</textarea>
-  ${people.length?`<details ${people.some(({row})=>row[column].trim())?'open':''}><summary>개인별 비고</summary>
-   ${people.map(({name,row,index})=>`<label><span>${esc(name)} · ${esc(row[1])}</span>
-    <input data-row="${index}" data-col="${column}" value="${esc(row[column])}" placeholder="비고 입력"></label>`).join('')}</details>`:''}
+ const key=kind==='rooms'?'roomNotes':'teamNotes';
+ return `<section class="assignment-notes"><h2>전체 비고</h2>
+  <textarea data-note="${key}" aria-label="전체 비고" placeholder="전체 비고 입력">${esc(state[key])}</textarea>
  </section>`;
+}
+function assignmentCardNote(kind,index,s=state){
+ const saved=s.assignmentNotes?.[kind]?.[index];
+ if(typeof saved==='string')return saved;
+ const isRoom=kind==='rooms',column=isRoom?26:30;
+ return (isRoom?roomSlots(s,index):teamSlots(s,index)).filter(i=>i>=0&&s.rows[i][column]?.trim())
+  .map(i=>s.rows[i][1]+' — '+s.rows[i][column]).join('\n');
+}
+function assignmentCardNoteHTML(kind,index){
+ const name=(kind==='rooms'?state.roomNames:state.teamNames)[index];
+ return `<label class="assignment-card-note"><span>비고</span>
+  <textarea data-assignment-note="${kind}" data-card-index="${index}" rows="2" aria-label="${esc(name)} 비고"
+   placeholder="비고 입력">${esc(assignmentCardNote(kind,index))}</textarea></label>`;
 }
 
 function hasFunding(column,s=state){
@@ -631,4 +656,55 @@ function gdkFundingBreakdown(){
   lines.push([status+' / '+category+(name!==category?' · '+name:''),gdk]);
  }
  return lines;
+}
+
+function settlementCalculatorHTML(){
+ const keys=[['C','C'],['⌫','⌫'],['(','('],[')',')'],['7','7'],['8','8'],['9','9'],['÷','/'],
+  ['4','4'],['5','5'],['6','6'],['×','*'],['1','1'],['2','2'],['3','3'],['−','-'],
+  ['0','0'],['.','.'],['=','='],['+','+']];
+ return `<dialog id="settlementCalculator" class="settlement-calculator" aria-label="정산 계산기">
+  <header><strong>정산 계산기</strong><form method="dialog"><button class="secondary" aria-label="계산기 닫기">닫기</button></form></header>
+  <form onsubmit="event.preventDefault();calculateSettlement()">
+   <input id="calcExpression" type="text" inputmode="decimal" maxlength="120" autocomplete="off"
+    aria-label="계산식" placeholder="예: (1600000 × 1.1) ÷ 8">
+   <output id="calcOutput" aria-live="polite"></output>
+   <div class="calc-keys">${keys.map(([label,key])=>`<button type="button" class="${key==='='?'':'secondary'}"
+    onclick="settlementCalcKey('${key}')">${label}</button>`).join('')}</div>
+  </form>
+ </dialog>`;
+}
+function openSettlementCalculator(){
+ const dialog=document.getElementById('settlementCalculator');
+ if(dialog&&!dialog.open)dialog.showModal();
+ document.getElementById('calcExpression')?.focus();
+}
+function settlementCalcKey(key){
+ const input=document.getElementById('calcExpression');
+ if(key==='='){calculateSettlement();return;}
+ if(key==='C'){input.value='';document.getElementById('calcOutput').textContent='';}
+ else if(key==='⌫')input.value=input.value.slice(0,-1);
+ else if(input.value.length<120)input.value+=key;
+ input.focus();
+}
+function calculateSettlement(){
+ const input=document.getElementById('calcExpression'),output=document.getElementById('calcOutput');
+ try{output.textContent=evaluateSettlementMath(input.value).toLocaleString('ko-KR',{maximumFractionDigits:10});}
+ catch{output.textContent='계산식을 확인해 주세요.';}
+}
+function evaluateSettlementMath(text){
+ const source=text.trim().replace(/\s/g,'').replace(/×/g,'*').replace(/÷/g,'/').replace(/−/g,'-');
+ if(!source||source.length>120||!/^[0-9.+*/()-]+$/.test(source))throw Error('Invalid expression');
+ let cursor=0;
+ function primary(){
+  const char=source[cursor];
+  if(char==='+'||char==='-'){cursor++;return (char==='-'?-1:1)*primary();}
+  if(char==='('){cursor++;const value=expression();if(source[cursor++]!==')')throw Error('Missing parenthesis');return value;}
+  const match=source.slice(cursor).match(/^(?:\d+\.?\d*|\.\d+)/);
+  if(!match)throw Error('Missing number');cursor+=match[0].length;return Number(match[0]);
+ }
+ function product(){let value=primary();while(source[cursor]==='*'||source[cursor]==='/'){const op=source[cursor++],rhs=primary();value=op==='*'?value*rhs:value/rhs;}return value;}
+ function expression(){let value=product();while(source[cursor]==='+'||source[cursor]==='-'){const op=source[cursor++],rhs=product();value=op==='+'?value+rhs:value-rhs;}return value;}
+ const result=expression();
+ if(cursor!==source.length||!Number.isFinite(result))throw Error('Invalid result');
+ return result;
 }
