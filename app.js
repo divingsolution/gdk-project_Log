@@ -62,7 +62,7 @@ function settlementCheck(){if(settlementSelection)return `대상자 비용 소�
 function settlementExportTools(){const guests=state.rows.map((r,i)=>({r,i})).filter(x=>x.i>=MEMBER_LIMIT&&x.r[1].trim());return `<section class="settlement-export"><button type="button" class="secondary" onclick="openSettlementCalculator()">계산기</button><strong>정산서 저장</strong> <button onclick="downloadReport('png','members')">멤버 전체 PNG</button> <select id="guestExportPerson" aria-label="객원 정산 대상"><option value="">객원 선택</option>${guests.map(({r,i})=>`<option value="${i}">${esc(r[1])}</option>`).join('')}</select> <button onclick="downloadReport('png','guest')">객원 개인 PNG</button></section>`;}
 function moneyCards(){
  const a=classifiedExpenseSummary(),money=v=>fmt(v)+'원';
- const items=[['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 비용 (부가세 포함)',a.card],['카드 공급가',a.cardBase],['카드 부가세 10%',a.vat],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),['총 지출 (부가세 포함)',a.gross],...(!settlementSelection?gdkFundingBreakdown():[])];
+ const items=[['고다 지원 비용',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드 결제대행액 (부가세 포함)',a.card],['카드 공급가',a.cardBase],['카드 부가세 10%',a.vat],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),['총 지출 (부가세 포함)',a.gross],...(!settlementSelection?gdkFundingBreakdown():[])];
  if(settlementSelection){const balance=settlementRows().reduce((n,r)=>n+cost(r).balance,0);return [...items.map(([k,v])=>[k,money(v),'']),[balance<0?'최종 환급액':'최종 납부액',money(Math.abs(balance)),'']];}
  items.push(['외부 지원금액',a.external]);return [...items.map(([k,v])=>[k,money(v),'']),['외부 지원 차감 후 총비용',money(a.gross-a.external),'']];
 }
@@ -213,7 +213,7 @@ function validDate(x){return /^\d{4}-\d{2}-\d{2}$/.test(x||'')&&Number.isFinite(
 function wasteRows(s){return (s.waste||[]).filter(w=>nameKey(w.type)&&String(w.kg).trim()!==''&&Number.isFinite(Number(w.kg))&&Number(w.kg)>=0);}
 function projectErrors(s){const errors=[];if(!nameKey(s.meta.project))errors.push('프로젝트명을 입력해 주세요.');if(!validDate(s.meta.startDate)||!validDate(s.meta.endDate)||s.meta.endDate<s.meta.startDate)errors.push('시작일·종료일을 확인해 주세요.');const seen=new Set();s.rows.forEach((r,i)=>{const key=nameKey(r[1]);if(key&&seen.has(key))errors.push(`${key}: 같은 프로젝트의 동명이인은 _1, _2 등으로 구분해 주세요.`);if(key)seen.add(key);for(const c of [...expenseColumns,21,23]){if(r[c]!==''&&(!Number.isFinite(Number(r[c]))||Number(r[c])<0||!Number.isInteger(Number(r[c]))))errors.push(`${i+1}번 금액을 확인해 주세요.`);}if(!key&&[...expenseColumns,21,23].some(c=>r[c]!==''))errors.push(`${i+1}번: 금액을 입력한 행에 성명이 필요합니다.`);for(const c of [5,7,9]){const v=String(r[c]).trim().toUpperCase();if(key&&v&&!isO(v)&&!['X','Ｘ','×'].includes(v))errors.push(`${key}: 다이빙은 O 또는 X로 입력해 주세요. 숫자 0은 O가 아닙니다.`);}});(s.waste||[]).forEach((w,i)=>{if(w.type===''&&w.kg==='')return;if(!nameKey(w.type)||String(w.kg).trim()===''||!Number.isFinite(Number(w.kg))||Number(w.kg)<0)errors.push(`폐기물 ${i+1}행의 종류·수거량(kg)을 확인해 주세요.`);});return [...new Set(errors)];}
 function aggregate(entries,year){const projects=entries.filter(p=>p.data.meta.startDate?.slice(0,4)===String(year));const persons=new Map(),wastes=new Map(),months=Array.from({length:12},(_,i)=>({month:i+1,projects:0,participants:0,divers:0,divingDays:0,diving:0,lodging:0,food:0,support:0,external:0,waste:0}));const costs=Object.fromEntries(Object.keys(categoryNames).map(k=>[k,0]));let memberParticipation=0,guestParticipation=0,participation=0,diverEntries=0,divingDays=0,support=0,external=0,wasteKg=0,missingWaste=0,maleEntries=0,femaleEntries=0,unknownEntries=0;
- for(const entry of projects){const s=entry.data,m=months[Number(s.meta.startDate.slice(5,7))-1];if(!m)continue;m.projects++;external+=projectSupportAmount(s);m.external+=projectSupportAmount(s);for(const column of expenseColumns){if(!hasFunding(column,s))continue;const funding=expenseFunding(column,s);const cat=column===17?'diving':Object.hasOwn(categoryNames,s.categories?.[column])?s.categories[column]:'other';support+=funding.gdk+funding.vat;m.support+=funding.gdk+funding.vat;external+=funding.external+funding.externalVat;m.external+=funding.external+funding.externalVat;costs[cat]+=funding.base+funding.vat+funding.externalVat;if(['diving','lodging','food'].includes(cat))m[cat]+=funding.base+funding.vat+funding.externalVat;}const topDive=s.sharedTotals?.[17]!==undefined&&s.sharedTotals[17]!=='';if(topDive&&!hasFunding(17,s)){costs.diving+=num(s.sharedTotals[17]);m.diving+=num(s.sharedTotals[17]);if(isExpenseSupported(17,s)){support+=num(s.sharedTotals[17]);m.support+=num(s.sharedTotals[17]);}}const seen=new Set();for(const [rowIndex,r] of s.rows.entries()){for(const c of expenseColumns){if(hasFunding(c,s)&&!(c===17&&topDive&&rowIndex>=MEMBER_LIMIT&&r[1].trim()))continue;const cat=Object.hasOwn(categoryNames,s.categories?.[c])?s.categories[c]:'other',v=c===17&&topDive&&rowIndex<MEMBER_LIMIT?0:num(r[c]);costs[cat]+=v;if(isExpenseSupported(c,s)){support+=v;m.support+=v;}if(['diving','lodging','food'].includes(cat))m[cat]+=v;}support+=num(r[21]);m.support+=num(r[21]);const key=nameKey(r[1]);if(!key||seen.has(key))continue;seen.add(key);const gender=genderOf(r[2]),days=[5,7,9].filter(c=>isO(r[c])).length;participation++;if(rowIndex<MEMBER_LIMIT)memberParticipation++;else guestParticipation++;m.participants++;if(gender==='남')maleEntries++;else if(gender==='여')femaleEntries++;else unknownEntries++;if(days){diverEntries++;m.divers++;}divingDays+=days;m.divingDays+=days;if(!persons.has(key))persons.set(key,{name:key,projects:0,divingProjects:0,divingDays:0,genders:new Set()});const p=persons.get(key);p.projects++;p.divingProjects+=days?1:0;p.divingDays+=days;if(gender!=='미확인')p.genders.add(gender);}
+ for(const entry of projects){const s=entry.data,m=months[Number(s.meta.startDate.slice(5,7))-1];if(!m)continue;m.projects++;external+=projectSupportAmount(s);m.external+=projectSupportAmount(s);for(const column of expenseColumns){if(!hasFunding(column,s))continue;const funding=expenseFunding(column,s);const cat=column===17?'diving':Object.hasOwn(categoryNames,s.categories?.[column])?s.categories[column]:'other';support+=funding.gdk+funding.gdkVat;m.support+=funding.gdk+funding.gdkVat;external+=funding.external+funding.externalVat;m.external+=funding.external+funding.externalVat;costs[cat]+=funding.base+funding.vat+funding.externalVat;if(['diving','lodging','food'].includes(cat))m[cat]+=funding.base+funding.vat+funding.externalVat;}const topDive=s.sharedTotals?.[17]!==undefined&&s.sharedTotals[17]!=='';if(topDive&&!hasFunding(17,s)){costs.diving+=num(s.sharedTotals[17]);m.diving+=num(s.sharedTotals[17]);if(isExpenseSupported(17,s)){support+=num(s.sharedTotals[17]);m.support+=num(s.sharedTotals[17]);}}const seen=new Set();for(const [rowIndex,r] of s.rows.entries()){for(const c of expenseColumns){if(hasFunding(c,s)&&!(c===17&&topDive&&rowIndex>=MEMBER_LIMIT&&r[1].trim()))continue;const cat=Object.hasOwn(categoryNames,s.categories?.[c])?s.categories[c]:'other',v=c===17&&topDive&&rowIndex<MEMBER_LIMIT?0:num(r[c]);costs[cat]+=v;if(isExpenseSupported(c,s)){support+=v;m.support+=v;}if(['diving','lodging','food'].includes(cat))m[cat]+=v;}support+=num(r[21]);m.support+=num(r[21]);const key=nameKey(r[1]);if(!key||seen.has(key))continue;seen.add(key);const gender=genderOf(r[2]),days=[5,7,9].filter(c=>isO(r[c])).length;participation++;if(rowIndex<MEMBER_LIMIT)memberParticipation++;else guestParticipation++;m.participants++;if(gender==='남')maleEntries++;else if(gender==='여')femaleEntries++;else unknownEntries++;if(days){diverEntries++;m.divers++;}divingDays+=days;m.divingDays+=days;if(!persons.has(key))persons.set(key,{name:key,projects:0,divingProjects:0,divingDays:0,genders:new Set()});const p=persons.get(key);p.projects++;p.divingProjects+=days?1:0;p.divingDays+=days;if(gender!=='미확인')p.genders.add(gender);}
  const wr=wasteRows(s);if(!wr.length)missingWaste++;for(const w of wr){const key=nameKey(w.type),kg=Number(w.kg);wasteKg+=kg;m.waste+=kg;wastes.set(key,(wastes.get(key)||0)+kg);}}
  const individuals=[...persons.values()].map(p=>({...p,genders:undefined,gender:p.genders.size===1?[...p.genders][0]:p.genders.size>1?'성별 불일치':'미확인'})).sort((a,b)=>b.projects-a.projects||b.divingDays-a.divingDays||a.name.localeCompare(b.name,'ko'));const male=individuals.filter(p=>p.gender==='남').length,female=individuals.filter(p=>p.gender==='여').length;
  return {year:String(year),projectCount:projects.length,participation,memberParticipation,guestParticipation,uniqueParticipants:individuals.length,male,female,unknown:individuals.length-male-female,maleEntries,femaleEntries,unknownEntries,diverEntries,uniqueDivers:individuals.filter(p=>p.divingDays>0).length,divingDays,costs,support,external,wasteKg,missingWaste,months,individuals,wastes:[...wastes].map(([type,kg])=>({type,kg})).sort((a,b)=>b.kg-a.kg||a.type.localeCompare(b.type,'ko'))};}
@@ -268,13 +268,14 @@ function onEdit(e){
  const {fundingColumn,fundingField}=e.target.dataset;
  if(fundingColumn!==undefined){
   const column=Number(fundingColumn);
-  if(!expenseColumns.includes(column)||!['gdk','external','gdkVat','externalVat','gdkFull'].includes(fundingField)||!e.target.validity.valid)return;
+  if(!expenseColumns.includes(column)||!['gdk','external','gdkVat','externalVat','gdkFull','fullCard'].includes(fundingField)||!e.target.validity.valid)return;
   state.expenseFunding??={};
   const entry=state.expenseFunding[column]??(state.expenseFunding[column]=editableFunding(column));
   if(fundingField==='gdkVat'){delete entry.card;entry.gdkVat=e.target.checked;}
-  else if(fundingField==='externalVat'||fundingField==='gdkFull')entry[fundingField]=e.target.checked;
+  else if(fundingField==='externalVat'||fundingField==='gdkFull'||fundingField==='fullCard')entry[fundingField]=e.target.checked;
   else if(e.target.value==='')delete entry[fundingField];
   else entry[fundingField]=e.target.value;
+  if(fundingField==='fullCard')e.target.closest('.expense-tile')?.querySelectorAll('[data-funding-field$="Vat"]').forEach(input=>input.disabled=e.target.checked);
   refreshMoneyPage();persist();return;
  }
  const field=e.target;
@@ -355,10 +356,10 @@ function expenseQuickLine(){
  const cards=columns.map(column=>{
   const funding=editableFunding(column),name=esc(label(column)||'추가비용');
   const supportField=(field,title,checked)=>`<div class="expense-support-line">
-   <label class="expense-field"><span>${title} 지원액</span><input type="number" min="0" step="1" inputmode="numeric" placeholder="0"
+   <label class="expense-field"><span>${title} 지원액 (합계)</span><input type="number" min="0" step="1" inputmode="numeric" placeholder="0"
     data-funding-column="${column}" data-funding-field="${field}" aria-label="${name} ${title} 지원액" value="${esc(funding[field]??'')}"></label>
    <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="${field}Vat"
-    aria-label="${name} ${title} 부가세 10%" ${checked?'checked':''}>부가세 10%</label>
+    aria-label="${name} ${title} 지원분 부가세 10%" ${checked?'checked':''} ${funding.fullCard?'disabled':''}>지원분 부가세 10%</label>
   </div>`;
   return `<section class="expense-cell expense-tile" aria-label="${name}">
    <div class="expense-tile-heading">
@@ -374,6 +375,8 @@ function expenseQuickLine(){
    <small data-cost-current="${column}"></small>${column===17?'<small>멤버 기준 · 객원 별도</small>':''}
    <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="gdkFull"
     aria-label="${name} 고다 전액 지원" ${funding.gdkFull?'checked':''}>고다 전액 지원</label>
+   <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="fullCard"
+    aria-label="${name} 다솔카드 전체 결제대행" ${funding.fullCard?'checked':''}>다솔카드 전체 결제대행 (+부가세 10%)</label>
    ${supportField('gdk','고다',funding.gdkVat??(num(funding.card)>0&&num(funding.card)===num(funding.gdk)))}
    ${supportField('external','외부',funding.externalVat)}
    <small class="expense-result" data-funding-info="${column}"></small>
@@ -420,8 +423,8 @@ function settlementCanvas(){
  box(margin,y+rowH-1,usable,1,'#dbeaf0');y+=rowH;});
  if(!rows.length){text('등록된 참여자가 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
  box(margin,y,usable,40,'#f5e7dc');cols.forEach((c,j)=>text(c===1?'합계':fmt(hasFunding(c)?rows.reduce((sum,row)=>sum+rowExpenseDue(row,c,state.rows.indexOf(row)),0):totals(c)),xs[j],y,ws[j],40,c===24?23:19,true,'#34434a',c===1?'center':'right'));y+=56;
- if(guestOnly){text('다이빙솔루션 카드결제 (부가세 포함)',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().card)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;text('고다 지원비 합계',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
- else{const a=classifiedExpenseSummary();for(const [title,v] of [['고다 지원 비용 (카드 제외)',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드결제 (부가세 포함)',a.card],['총 지출 (부가세 포함)',a.gross],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),...(settlementSelection?[]:[['외부 지원금액',a.external],...gdkFundingBreakdown()])]){text(title,margin,y,usable/2,30,20);text(fmt(v)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
+ if(guestOnly){text('다이빙솔루션 카드 결제대행액 (부가세 포함)',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().card)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;text('고다 지원비 합계',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
+ else{const a=classifiedExpenseSummary();for(const [title,v] of [['고다 지원 비용',a.supported],...(a.gdkFunding?[['직접 입력한 고다 지원 합계 (부가세 포함)',a.gdkFunding]]:[]),['멤버 부담비용',a.members],['객원 비용',a.guests],...(a.unallocated?[['미배분 비용',a.unallocated]]:[]),['다이빙솔루션 카드 결제대행액 (부가세 포함)',a.card],['총 지출 (부가세 포함)',a.gross],...(a.externalVat?[['외부 지원 부가세 10%',a.externalVat]]:[]),...(settlementSelection?[]:[['외부 지원금액',a.external],...gdkFundingBreakdown()])]){text(title,margin,y,usable/2,30,20);text(fmt(v)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
 
  if(hasNotes){text('정산 메모',margin,y,usable,26,18,true);text(state.moneyNotes,margin,y+26,usable,64,18);y+=100;}
  box(margin,y+8,usable,48,'#fff2e7');text('정산 입금 계좌 | '+SETTLEMENT_ACCOUNT,margin+8,y+8,usable-16,48,22,true);
@@ -448,7 +451,7 @@ function cardAmount(column,rows=settlementRows()){
  return withVat(rows.reduce((sum,row)=>sum+num(row[column]),0));
 }
 function classifiedExpenseSummary(){
- let supported=0,members=0,guests=0,cardBase=0,vat=0,unallocated=0,externalAllocated=0,externalVat=0,gdkFunding=0;
+ let supported=0,members=0,guests=0,cardBase=0,vat=0,unallocated=0,externalAllocated=0,externalVat=0,gdkFunding=0,agencyBase=0;
  const rows=settlementRows();
  const memberScope=!settlementSelection||settlementSelection.some(index=>index<MEMBER_LIMIT);
  for(const column of expenseColumns){
@@ -468,8 +471,9 @@ function classifiedExpenseSummary(){
    const scopedCard=Math.round(funding.card*fraction),scopedExternal=Math.round(funding.external*fraction),scopedGdk=Math.round(funding.gdk*fraction);
    members+=scopedMember;guests+=scopedGuest;
    if(!settlementSelection)unallocated+=Math.max(0,funding.balance-scopedMember-(sharedDiving?0:scopedGuest));
-   supported+=scopedGdk-scopedCard;cardBase+=scopedCard;vat+=Math.round(funding.vat*fraction);
-   externalAllocated+=scopedExternal;externalVat+=Math.round(funding.externalVat*fraction);gdkFunding+=scopedGdk+Math.round(funding.vat*fraction);
+   if(funding.fullCard)agencyBase+=scopedCard;
+   supported+=scopedGdk-(funding.fullCard?0:scopedCard);cardBase+=scopedCard;vat+=Math.round(funding.vat*fraction);
+   externalAllocated+=scopedExternal;externalVat+=Math.round(funding.externalVat*fraction);gdkFunding+=scopedGdk+Math.round(funding.gdkVat*fraction);
   }else if(isCardExpense(column)){
    const amount=cardAmount(column,rows);
    cardBase+=amount.base;
@@ -485,7 +489,7 @@ function classifiedExpenseSummary(){
  }
  const card=cardBase+vat;
  return {supported,members,guests,unallocated,cardBase,vat,card,externalAllocated,externalVat,gdkFunding,unsupported:members+guests+unallocated,
-  gross:supported+members+guests+card+unallocated+externalAllocated+externalVat,external:externalAllocated+externalVat+(settlementSelection?0:projectSupportAmount())};
+  gross:supported+members+guests+card-agencyBase+unallocated+externalAllocated+externalVat,external:externalAllocated+externalVat+(settlementSelection?0:projectSupportAmount())};
 }
 
 function splitCountField(column){
@@ -575,8 +579,10 @@ function expenseFunding(column,s=state){
  const full=entry.gdkFull===true;
  const gdk=full?base:Math.min(base,Math.max(0,num(entry.gdk)));
  const external=Math.min(base-gdk,Math.max(0,num(entry.external)));
+ if(entry.fullCard===true)return {base,gdk,external,card:base,vat:withVat(base).vat,gdkVat:0,externalVat:0,fullCard:true,
+  balance:base-gdk-external,limited:(!full&&gdk!==num(entry.gdk))||(!full&&external!==num(entry.external))};
  const card=entry.gdkVat===true?gdk:Math.min(gdk,Math.max(0,num(entry.card)));
- return {base,gdk,external,card,vat:withVat(card).vat,externalVat:entry.externalVat===true?withVat(external).vat:0,balance:base-gdk-external,
+ return {base,gdk,external,card,vat:withVat(card).vat,gdkVat:withVat(card).vat,externalVat:entry.externalVat===true?withVat(external).vat:0,balance:base-gdk-external,
   limited:(!full&&gdk!==num(entry.gdk))||(!full&&external!==num(entry.external))||(!entry.gdkVat&&card!==num(entry.card))};
 }
 function rowExpenseDue(row,column,index){
@@ -590,7 +596,7 @@ function rowExpenseDue(row,column,index){
 function fundingInfo(column){
  if(!hasFunding(column)){if(isCardExpense(column))return '기존 다솔카드 '+fmt(cardAmount(column).total)+'원';if(isExpenseSupported(column))return '기존 고다 전액 지원';return '—';}
  const f=expenseFunding(column);
- return `${isFullyFunded(column)?'전액 지원 · ':''}적용액: 고다 ${fmt(f.gdk+f.vat)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다솔카드 ${fmt(f.card+f.vat)}원 (부가세 ${fmt(f.vat)}원)`+
+ return `${isFullyFunded(column)?'전액 지원 · ':''}적용액: 고다 ${fmt(f.gdk+f.gdkVat)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다솔카드 ${fmt(f.card+f.vat)}원 (부가세 ${fmt(f.vat)}원)`+
   (f.limited?' · 입력액이 한도를 초과해 적용액을 제한했습니다.':'');
 }
 
@@ -646,7 +652,7 @@ function gdkFundingBreakdown(){
  const lines=[];
  for(const column of expenseColumns){
   const f=expenseFunding(column);
-  const gdk=hasFunding(column)?f.gdk+f.vat:isExpenseSupported(column)?totals(column):0;
+  const gdk=hasFunding(column)?f.gdk+f.gdkVat:isExpenseSupported(column)?totals(column):0;
   const markedFull=state.expenseFunding?.[column]?.gdkFull===true;
   if(!gdk&&!markedFull&&!(hasFunding(column)&&isFullyFunded(column)))continue;
   const status=markedFull||gdk&&(!hasFunding(column)||f.gdk===f.base)?'고다 전액 지원':
