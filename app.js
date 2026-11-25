@@ -326,7 +326,7 @@ function onEdit(e){
   persist();
   return;
  }
-const d=e.target.dataset,v=e.target.value;if(d.expenseVat!==undefined){const c=Number(d.expenseVat);if(!expenseColumns.includes(c))return;state.expenseVat??={};state.expenseVat[c]=e.target.checked;refreshMoneyPage();persist();return;}if(d.expenseSupport!==undefined){const c=Number(d.expenseSupport);if(!expenseColumns.includes(c))return;state.expenseSupport??={};state.expenseSupport[c]=v==='supported';refreshMoneyPage();persist();return;}if(d.projectSupportSource!==undefined){state.projectSupportSource=v;refreshMoneyPage();persist();return;}if(d.projectSupport!==undefined){if(v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;state.projectSupport=v;refreshMoneyPage();persist();return;}if(d.roomName!==undefined){const k=Number(d.roomName);state.roomNames[k]=v;state.rows.filter(r=>r[44]===String(k+1)).forEach(r=>r[16]=v);persist();return;}if(d.roomSlot!==undefined){const error=assignRoomSlot(state,Number(d.room),Number(d.roomSlot),v);if(error)alert(error);render();persist();return;}if(d.total!==undefined){if(v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;state.sharedTotals??={};state.sharedTotals[d.total]=v;recalculateAllocations();updateAllocationInputs();refresh();persist();return;}if(d.allocation!==undefined){const r=state.rows[Number(d.personIndex)],c=Number(d.allocation),excluded=excludedCosts(r).filter(x=>x!==c);if(!e.target.checked)excluded.push(c);r[43]=JSON.stringify(excluded);recalculateAllocations();updateAllocationInputs();refresh();persist();return;}if(d.category!==undefined){state.categories[d.category]=v;refresh();persist();return;}if(d.waste!==undefined){state.waste[num(d.waste)][d.wasteField]=v;document.getElementById('wasteTotal').textContent='합계 '+kgFmt(wasteRows(state).reduce((n,w)=>n+Number(w.kg),0))+' kg';persist();return;}if(d.teamSlot!==undefined){const error=assignTeamSlot(state,num(d.team),num(d.teamSlot),v);if(error)alert(error);render();persist();return;}if(d.meta){state.meta[d.meta]=v;if(['startDate','endDate'].includes(d.meta)){state.meta.period=[state.meta.startDate,state.meta.endDate].filter(Boolean).join(' ~ ');const field=document.querySelector('[data-meta="period"]');if(field)field.value=state.meta.period;render();persist();return;}}else if(d.row!==undefined){const i=num(d.row),c=num(d.col);if(rentalColumns.includes(c)&&e.target.validity&&!e.target.validity.valid)return;if([21,23].includes(c)&&v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;if(c===29){const error=assignTeam(state,i,v);if(error){e.target.value=state.rows[i][c];alert(error);return;}}else {if(c>=100){const map=stayMap(state.rows[i]);map[stayDates(state)[c-100]]=v;state.rows[i][39]=JSON.stringify(map);}else state.rows[i][c]=v;if(c>=100||[4,6,8].includes(c))e.target.className=stayClass(v);if(c===1&&!v.trim()){state.rows[i][44]='';state.rows[i][46]='';state.rows[i][16]='';state.rows[i][29]='';state.rows[i][38]='';}if(c===28&&v){[4,6,8].forEach(day=>{if(isO(state.rows[i][day]))state.rows[i][day]=v;});document.querySelectorAll(`[data-row="${i}"]`).forEach(control=>{if([4,6,8].includes(num(control.dataset.col)))control.value=state.rows[i][num(control.dataset.col)];});}}}else if(d.label)state.labels[d.label]=v;else if(d.teamName!==undefined){state.teamNames[num(d.teamName)]=v;persist();return;}else if(d.note)state[d.note]=v;else return;recalculateAllocations();updateAllocationInputs();refresh();persist();}
+const d=e.target.dataset,v=e.target.value;if(d.expenseVat!==undefined){const c=Number(d.expenseVat);if(!expenseColumns.includes(c))return;state.expenseVat??={};state.expenseVat[c]=e.target.checked;refreshMoneyPage();persist();return;}if(d.expenseSupport!==undefined){const c=Number(d.expenseSupport);if(!expenseColumns.includes(c))return;state.expenseSupport??={};state.expenseSupport[c]=v==='supported';refreshMoneyPage();persist();return;}if(d.projectSupportSource!==undefined){state.projectSupportSource=v;refreshMoneyPage();persist();return;}if(d.projectSupport!==undefined){if(v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;state.projectSupport=v;refreshMoneyPage();persist();return;}if(d.roomName!==undefined){const k=Number(d.roomName);state.roomNames[k]=v;state.rows.filter(r=>r[44]===String(k+1)).forEach(r=>r[16]=v);persist();return;}if(d.roomSlot!==undefined){const error=assignRoomSlot(state,Number(d.room),Number(d.roomSlot),v);if(error)alert(error);render();persist();return;}if(d.total!==undefined){if(v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;state.sharedTotals??={};state.sharedTotals[d.total]=v;recalculateAllocations();updateAllocationInputs();refresh();persist();return;}if(d.allocation!==undefined){const r=state.rows[Number(d.personIndex)],c=Number(d.allocation),excluded=excludedCosts(r).filter(x=>x!==c);setAllocationIncluded(r,c,e.target.checked,excluded);finishAllocationEdit(c);return;}if(d.category!==undefined){state.categories[d.category]=v;refresh();persist();return;}if(d.waste!==undefined){state.waste[num(d.waste)][d.wasteField]=v;document.getElementById('wasteTotal').textContent='합계 '+kgFmt(wasteRows(state).reduce((n,w)=>n+Number(w.kg),0))+' kg';persist();return;}if(d.teamSlot!==undefined){const error=assignTeamSlot(state,num(d.team),num(d.teamSlot),v);if(error)alert(error);render();persist();return;}if(d.meta){state.meta[d.meta]=v;if(['startDate','endDate'].includes(d.meta)){state.meta.period=[state.meta.startDate,state.meta.endDate].filter(Boolean).join(' ~ ');const field=document.querySelector('[data-meta="period"]');if(field)field.value=state.meta.period;render();persist();return;}}else if(d.row!==undefined){const i=num(d.row),c=num(d.col);if(rentalColumns.includes(c)&&e.target.validity&&!e.target.validity.valid)return;if([21,23].includes(c)&&v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0))return;if(c===29){const error=assignTeam(state,i,v);if(error){e.target.value=state.rows[i][c];alert(error);return;}}else {if(c>=100){const map=stayMap(state.rows[i]);map[stayDates(state)[c-100]]=v;state.rows[i][39]=JSON.stringify(map);}else state.rows[i][c]=v;if(c>=100||[4,6,8].includes(c))e.target.className=stayClass(v);if(c===1&&!v.trim()){state.rows[i][44]='';state.rows[i][46]='';state.rows[i][16]='';state.rows[i][29]='';state.rows[i][38]='';}if(c===28&&v){[4,6,8].forEach(day=>{if(isO(state.rows[i][day]))state.rows[i][day]=v;});document.querySelectorAll(`[data-row="${i}"]`).forEach(control=>{if([4,6,8].includes(num(control.dataset.col)))control.value=state.rows[i][num(control.dataset.col)];});}}}else if(d.label)state.labels[d.label]=v;else if(d.teamName!==undefined){state.teamNames[num(d.teamName)]=v;persist();return;}else if(d.note)state[d.note]=v;else return;recalculateAllocations();updateAllocationInputs();refresh();persist();}
 document.addEventListener('click',e=>{const d=e.target.closest('[data-delete-project]');if(d){deleteArchived(d.dataset.deleteProject);return;}const b=e.target.closest('[data-open-project]');if(b)openArchived(b.dataset.openProject);});
 document.addEventListener('focusout',e=>{if(e.target.dataset.teamName!==undefined||e.target.dataset.roomName!==undefined)render();if(e.target.dataset.col==='1'&&view==='people')setTimeout(finishNameEdit,0);});
 document.addEventListener('input',onEdit);document.addEventListener('change',onEdit);
@@ -358,7 +358,7 @@ function settlementRoster(people){
 function renderMoneyPage(){
  const people=moneyPeople();
  document.getElementById('paper').innerHTML='<div class="brand">GHOST DIVING KOREA / SETTLEMENT</div><h1>프로젝트 정산</h1><div class="hero">'+heroHTML()+'</div>'+settlementExportTools()+settlementCalculatorHTML()+settlementRoster(people)+
- '<section class="money-section"><h2>발생 비용 입력</h2><p>금액과 나눌 인원을 입력하면 1인당 금액을 바로 볼 수 있습니다.</p>'+expenseQuickLine()+'<details class="expense-details"><summary>개인별 비용 상세 · 객원 다이빙비 입력</summary>'+moneyExpenseTable(visibleExpenseColumns())+'</details></section>'+
+ '<section class="money-section"><h2>발생 비용 입력</h2><p>배분 인원 선택에서 비용을 나눌 사람을 체크하세요. 인원 숫자 입력은 1인당 금액 미리보기에 사용됩니다.</p>'+expenseQuickLine()+'<details class="expense-details"><summary>개인별 비용 상세 · 객원 다이빙비 입력</summary>'+moneyExpenseTable(visibleExpenseColumns())+'</details></section>'+
  '<section class="money-section advance-section"><h2>개인 선결제</h2><div class="advance-grid">'+people.map(({r,i})=>'<label class="advance-entry"><span>'+esc(r[1])+'</span>'+moneyInput(r,i,23)+'<span>원</span></label>').join('')+'</div><p id="advanceTotal"></p></section>'+
  '<section class="money-section"><h2>개인별 추가 납부 / 환급</h2><p>개인 배정 비용 − 개인별 고스트다이빙코리아 지원금 − 선결제액. 멤버 리조트 총액은 개인에게 자동 배분하지 않습니다.</p><div class="money-overflow"><table class="money-table"><thead><tr><th>성명</th><th>배정 비용</th><th>개인별 고스트다이빙코리아 지원금</th><th>개인 부담금</th><th>개인 선결제</th><th>정산 결과</th><th>정산 비고</th></tr></thead><tbody>'+people.map(({r,i})=>'<tr><td>'+esc(r[1])+'</td><td data-person-total="'+i+'"></td><td>'+moneyInput(r,i,21)+'</td><td data-person-due="'+i+'"></td><td data-person-advance="'+i+'"></td><td data-person-balance="'+i+'"></td><td class="memo">'+moneyInput(r,i,27)+'</td></tr>').join('')+'</tbody></table></div><div id="personalTotals" class="money-totals"></div></section>'+
  '<section class="money-section money-summary"><h2>프로젝트 최종 요약</h2><label class="support-input">항목 외 추가 외부 지원금 <input type="number" min="0" step="1" data-project-support aria-label="항목 외 추가 외부 지원금" value="'+esc(state.projectSupport||'')+'" placeholder="0"> 원</label> <label class="support-input">지원처 / 지원 내용 <input type="text" data-project-support-source value="'+esc(state.projectSupportSource??'')+'" placeholder="기관명, 후원자 또는 지원 내용"></label><div id="expenseBreakdown"></div><h3>프로젝트 전체 합계</h3><div id="moneySummary"></div></section>'+
@@ -423,7 +423,7 @@ function expenseQuickLine(){
    <div class="expense-figures">
     <label class="expense-field"><span>총액 (공급가)</span><input type="number" min="0" step="1" inputmode="numeric" data-total="${column}"
      value="${esc(state.sharedTotals?.[column]??'')}" placeholder="0" aria-label="${name} 총액"></label>
-    <div class="expense-field" data-split-field="${column}"><span>나눌 인원</span>${splitCountField(column)}</div>
+    <div class="expense-field" data-split-field="${column}"><span>나눌 인원 (미리보기)</span>${splitCountField(column)}</div>
    </div>
    <small data-cost-current="${column}"></small>${column===17?'<small>멤버 기준 · 객원 별도</small>':''}
    <label class="expense-vat"><input type="checkbox" data-funding-column="${column}" data-funding-field="gdkFull"
@@ -433,6 +433,7 @@ function expenseQuickLine(){
    ${supportField('gdk','고스트다이빙코리아',funding.gdkVat??(num(funding.card)>0&&num(funding.card)===num(funding.gdk)))}
    ${supportField('external','외부',funding.externalVat)}
    <small class="expense-result" data-funding-info="${column}"></small>
+   ${expenseParticipantPicker(column)}
   </section>`;
  });
  return `<div class="expense-tiles">${cards.join('')}</div>
@@ -560,6 +561,33 @@ function classifiedExpenseSummary(columns=expenseColumns){
   gross:supported+members+guests+card-agencyBase+unallocated+externalAllocated+externalVat,external:externalAllocated+externalVat+(settlementSelection?0:projectSupportAmount())};
 }
 
+function setAllocationIncluded(row,column,included,excluded=excludedCosts(row).filter(c=>c!==column)){
+ if(!included)excluded.push(column);
+ row[43]=JSON.stringify(excluded);
+}
+function finishAllocationEdit(column){
+ if(state.expenseSplitCounts)delete state.expenseSplitCounts[column];
+ document.querySelectorAll(`[data-split-count="${column}"]`).forEach(input=>input.value='');
+ recalculateAllocations();updateAllocationInputs();refresh();persist();
+}
+function setExpenseParticipants(column,included){
+ if(column===17||!expenseColumns.includes(column))return;
+ for(const {r} of moneyPeople())setAllocationIncluded(r,column,included);
+ document.querySelectorAll(`[data-allocation="${column}"]`).forEach(input=>input.checked=included);
+ finishAllocationEdit(column);
+}
+function expenseParticipantPicker(column){
+ if(column===17)return '';
+ const people=moneyPeople();
+ const group=(title,entries)=>entries.length?`<strong>${title}</strong><div class="expense-people-grid">${entries.map(({r,i})=>
+  `<label><input type="checkbox" data-allocation="${column}" data-person-index="${i}" ${excludedCosts(r).includes(column)?'':'checked'}>${esc(r[1])}</label>`).join('')}</div>`:'';
+ return `<details class="expense-people">
+  <summary>배분 인원 선택 · <span data-allocation-count="${column}">${people.filter(({r})=>!excludedCosts(r).includes(column)).length}</span>명</summary>
+  ${people.length?`<div class="expense-people-actions"><button type="button" class="secondary" onclick="setExpenseParticipants(${column},true)">전체 선택</button>
+  <button type="button" class="secondary" onclick="setExpenseParticipants(${column},false)">전체 해제</button></div>
+  ${group('멤버',people.filter(({i})=>i<MEMBER_LIMIT))}${group('객원',people.filter(({i})=>i>=MEMBER_LIMIT))}`:'<small>참여인원 탭에 이름을 먼저 입력하세요.</small>'}
+ </details>`;
+}
 function splitCountField(column){
  const count=state.expenseSplitCounts?.[column]??'';
  const name=esc(label(column)||'추가 비용');
@@ -568,7 +596,7 @@ function splitCountField(column){
   <output class="split-share" data-split-result="${column}"></output>`;
 }
 function splitShareText(column){
- const count=state.expenseSplitCounts?.[column];
+ const count=state.expenseSplitCounts?.[column]??(column===17?0:moneyPeople().filter(({r})=>!excludedCosts(r).includes(column)).length);
  if(!Number.isSafeInteger(count)||count<1)return '1인당 —';
  const entered=state.sharedTotals?.[column];
  const base=entered!==undefined&&entered!=='' ? Number(entered) : totals(column);
