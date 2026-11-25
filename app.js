@@ -441,7 +441,16 @@ function expenseQuickLine(){
 
 
 function settlementPrintData(){
- const rows=settlementRows(), cols=[1,...expenseColumns.filter(c=>(!isCardExpense(c)||c===17&&rows.some(r=>state.rows.indexOf(r)>=MEMBER_LIMIT&&num(r[17])))&&totals(c)!==0)];
+ const participants=settlementRows();
+ const rows=participants.filter(row=>{
+  const index=state.rows.indexOf(row);
+  return num(row[21])!==0||num(row[23])!==0||cost(row).balance!==0||expenseColumns.some(column=>{
+   if(column===17&&index<MEMBER_LIMIT&&allocationActive(17))return false;
+   if(isCardExpense(column)&&!(column===17&&index>=MEMBER_LIMIT))return false;
+   return (hasFunding(column)?rowExpenseDue(row,column,index):num(row[column]))!==0;
+  });
+ });
+ const cols=[1,...expenseColumns.filter(c=>(!isCardExpense(c)||c===17&&rows.some(r=>state.rows.indexOf(r)>=MEMBER_LIMIT&&num(r[17])))&&totals(c)!==0)];
  if(rows.some(r=>num(r[21])))cols.push(21);
  if(rows.some(r=>num(r[23])))cols.push(23);
  cols.push(24);
@@ -474,7 +483,7 @@ function settlementCanvas(){
  cols.forEach((c,j)=>{let v=c===1?r[1]:c===24?(balance<0?'환급 '+fmt(-balance):fmt(balance)):c===17&&index<MEMBER_LIMIT&&allocationActive(17)?'—':hasFunding(c)?fmt(rowExpenseDue(r,c,index)):num(r[c])?fmt(num(r[c])):'—';
  text(v,xs[j],y,ws[j],rowH,c===24?23:19,c===24||c===1,c===24&&balance<0?'#a74626':'#34434a',c===1?'center':'right');});
  box(margin,y+rowH-1,usable,1,'#dbeaf0');y+=rowH;});
- if(!rows.length){text('등록된 참여자가 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
+ if(!rows.length){text('표시할 개인 정산 내역이 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
  box(margin,y,usable,40,'#f5e7dc');cols.forEach((c,j)=>text(c===1?'합계':fmt(hasFunding(c)?rows.reduce((sum,row)=>sum+rowExpenseDue(row,c,state.rows.indexOf(row)),0):totals(c)),xs[j],y,ws[j],40,c===24?23:19,true,'#34434a',c===1?'center':'right'));y+=56;
  if(guestOnly){const a=classifiedExpenseSummary();for(const [title,amount] of [['다이빙솔루션 카드 결제 공급가',a.cardBase],['다이빙솔루션 부담 부가세',a.vat],['다이빙솔루션 카드 결제 합계',a.card]]){text(title,margin,y,usable/2,30,20);text(fmt(amount)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;}text('고스트다이빙코리아 지원금',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported+classifiedExpenseSummary().gdkCard+rows.reduce((sum,r)=>sum+num(r[21]),0))+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
  else{const a=classifiedExpenseSummary();for(const [title,v] of settlementSummaryLines()){text(title,margin,y,usable*0.7,30,20);text(fmt(v)+'원',margin+usable*0.7,y,usable*0.3,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
