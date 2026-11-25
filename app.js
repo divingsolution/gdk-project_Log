@@ -67,9 +67,11 @@ function settlementBreakdown(a,personal={members:0,guests:0}){
   ['멤버 부담비용',a.members-personal.members],
   ['객원 부담비용',a.guests-personal.guests],
   ['항목별 외부 지원금',a.externalAllocated+a.externalVat],
-  ...(a.gross-a.supported-a.gdkCard-a.members-a.guests-a.externalAllocated-a.externalVat?
-   [['부담 주체 미지정',a.gross-a.supported-a.gdkCard-a.members-a.guests-a.externalAllocated-a.externalVat]]:[]),
-  ['다이빙솔루션 카드 결제대행액 (부가세 포함)',a.card],
+  ...(a.gross-a.supported-a.gdkCard-a.members-a.guests-a.externalAllocated-a.externalVat-a.vat?
+   [['부담 주체 미지정',a.gross-a.supported-a.gdkCard-a.members-a.guests-a.externalAllocated-a.externalVat-a.vat]]:[]),
+  ['다이빙솔루션 카드 결제 공급가 (실제 비용)',a.cardBase],
+  ['다이빙솔루션 부담 부가세',a.vat],
+  ['다이빙솔루션 카드 결제 합계',a.card],
  ];
 }
 function settlementSummaryLines(){
@@ -84,14 +86,14 @@ function settlementSummaryLines(){
  return lines;
 }
 function expenseBreakdownTable(){
- const header=['비용 항목','총 지출','고스트다이빙코리아 지원금','멤버 부담','객원 부담','외부 지원금','부담 주체 미지정','다이빙솔루션 카드 결제대행액'];
+ const header=['비용 항목','총 지출','고스트다이빙코리아 지원금','멤버 부담','객원 부담','외부 지원금','부담 주체 미지정','다이빙솔루션 카드 공급가','다이빙솔루션 부담 부가세','카드 결제 합계'];
  const rows=visibleExpenseColumns().map(column=>{
   const a=classifiedExpenseSummary([column]);
   const gdk=a.supported+a.gdkCard,external=a.externalAllocated+a.externalVat;
-  return [label(column)||'추가비용',a.gross,gdk,a.members,a.guests,external,a.gross-gdk-a.members-a.guests-external,a.card];
+  return [label(column)||'추가비용',a.gross,gdk,a.members,a.guests,external,a.gross-gdk-a.members-a.guests-external-a.vat,a.cardBase,a.vat,a.card];
  }).filter(([, ...amounts])=>amounts.some(Boolean));
  if(!rows.length)return '';
- return '<h3>비용 항목별 부담 및 카드 결제</h3><p>카드 결제대행액은 결제수단별 금액입니다. 개인별 지원은 아래 총괄에서 부담 주체에 반영됩니다.</p><div class="money-overflow"><table class="money-table"><thead><tr>'+header.map(title=>'<th>'+title+'</th>').join('')+'</tr></thead><tbody>'+rows.map(([name,...amounts])=>'<tr><th scope="row">'+esc(name)+'</th>'+amounts.map(v=>'<td>'+fmt(v)+'원</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+ return '<h3>비용 항목별 부담 및 카드 결제</h3><p>카드 공급가는 총 지출에 포함된 실제 비용이며, 다이빙솔루션은 카드 부가세만 부담합니다. 개인별 지원은 아래 총괄에서 부담 주체에 반영됩니다.</p><div class="money-overflow"><table class="money-table"><thead><tr>'+header.map(title=>'<th>'+title+'</th>').join('')+'</tr></thead><tbody>'+rows.map(([name,...amounts])=>'<tr><th scope="row">'+esc(name)+'</th>'+amounts.map(v=>'<td>'+fmt(v)+'원</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 }
 function moneyCards(){
  const a=classifiedExpenseSummary(), money=v=>fmt(v)+'원';
@@ -448,7 +450,7 @@ function settlementPrintData(){
 }
 function settlementCanvas(){
  const {rows,cols,guestOnly,gross}=settlementPrintData(),W=1600,margin=32,usable=W-margin*2,rowH=36,headH=48,tableY=180;
- const hasNotes=!!state.moneyNotes.trim(),summaryH=guestOnly?220:492+(!settlementSelection?gdkFundingBreakdown().length*32:0);
+ const hasNotes=!!state.moneyNotes.trim(),summaryH=guestOnly?300:492+(!settlementSelection?gdkFundingBreakdown().length*32:0);
  const H=tableY+headH+Math.max(1,rows.length)*rowH+44+summaryH+(hasNotes?100:0)+90;
  const canvas=document.createElement('canvas');canvas.width=W*2;canvas.height=H*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);
  const box=(x,y,w,h,color)=>{ctx.fillStyle=color;ctx.fillRect(x,y,w,h);};
@@ -473,7 +475,7 @@ function settlementCanvas(){
  box(margin,y+rowH-1,usable,1,'#dbeaf0');y+=rowH;});
  if(!rows.length){text('등록된 참여자가 없습니다.',margin,y,usable,rowH,20);y+=rowH;}
  box(margin,y,usable,40,'#f5e7dc');cols.forEach((c,j)=>text(c===1?'합계':fmt(hasFunding(c)?rows.reduce((sum,row)=>sum+rowExpenseDue(row,c,state.rows.indexOf(row)),0):totals(c)),xs[j],y,ws[j],40,c===24?23:19,true,'#34434a',c===1?'center':'right'));y+=56;
- if(guestOnly){text('다이빙솔루션 카드 결제대행액 (부가세 포함)',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().card)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;text('고스트다이빙코리아 지원금',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported+classifiedExpenseSummary().gdkCard+rows.reduce((sum,r)=>sum+num(r[21]),0))+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
+ if(guestOnly){const a=classifiedExpenseSummary();for(const [title,amount] of [['다이빙솔루션 카드 결제 공급가',a.cardBase],['다이빙솔루션 부담 부가세',a.vat],['다이빙솔루션 카드 결제 합계',a.card]]){text(title,margin,y,usable/2,30,20);text(fmt(amount)+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;}text('고스트다이빙코리아 지원금',margin,y,usable/2,30,20);text(fmt(classifiedExpenseSummary().supported+classifiedExpenseSummary().gdkCard+rows.reduce((sum,r)=>sum+num(r[21]),0))+'원',margin+usable/2,y,usable/2,30,22,true,'#34434a','right');y+=36;const balance=rows.reduce((n,r)=>n+cost(r).balance,0);box(margin,y,usable,72,'#fff2e7');text(balance<0?'최종 환급액':'최종 납부액',margin+12,y,usable/2,72,24,true);text(fmt(Math.abs(balance))+'원',margin+usable/2,y,usable/2-12,72,38,true,'#b94c16','right');y+=88;}
  else{const a=classifiedExpenseSummary();for(const [title,v] of settlementSummaryLines()){text(title,margin,y,usable*0.7,30,20);text(fmt(v)+'원',margin+usable*0.7,y,usable*0.3,30,22,true,'#34434a','right');y+=32;}box(margin,y+6,usable,66,'#fff2e7');text(settlementSelection?'대상 비용 합계':'외부 지원 차감 후 총비용',margin+12,y+6,usable/2,66,24,true);text(fmt(a.gross-a.external)+'원',margin+usable/2,y+6,usable/2-12,66,38,true,'#b94c16','right');y+=86;}
 
  if(hasNotes){text('정산 메모',margin,y,usable,26,18,true);text(state.moneyNotes,margin,y+26,usable,64,18);y+=100;}
@@ -522,7 +524,7 @@ function classifiedExpenseSummary(columns=expenseColumns){
    members+=scopedMember;guests+=scopedGuest;
    if(!settlementSelection)unallocated+=Math.max(0,funding.balance-scopedMember-(sharedDiving?0:scopedGuest));
    if(funding.fullCard)agencyBase+=scopedCard;
-   else gdkCard+=scopedCard+Math.round(funding.gdkVat*fraction);
+   else gdkCard+=scopedCard;
    supported+=scopedGdk-(funding.fullCard?0:scopedCard);cardBase+=scopedCard;vat+=Math.round(funding.vat*fraction);
    externalAllocated+=scopedExternal;externalVat+=Math.round(funding.externalVat*fraction);gdkFunding+=scopedGdk+Math.round(funding.gdkVat*fraction);
   }else if(isCardExpense(column)){
@@ -647,7 +649,7 @@ function rowExpenseDue(row,column,index){
 function fundingInfo(column){
  if(!hasFunding(column)){if(isCardExpense(column))return '기존 다이빙솔루션 카드 '+fmt(cardAmount(column).total)+'원';if(isExpenseSupported(column))return '기존 고스트다이빙코리아 전액 지원';return '—';}
  const f=expenseFunding(column);
- return `${isFullyFunded(column)?'전액 지원 · ':''}적용액: 고스트다이빙코리아 ${fmt(f.gdk+f.gdkVat)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다이빙솔루션 카드 ${fmt(f.card+f.vat)}원 (부가세 ${fmt(f.vat)}원)`+
+ return `${isFullyFunded(column)?'전액 지원 · ':''}적용액: 고스트다이빙코리아 ${fmt(f.gdk)}원 · 외부 ${fmt(f.external+f.externalVat)}원 · 참가자 부담 ${fmt(f.balance)}원 · 다이빙솔루션 카드 ${fmt(f.card+f.vat)}원 (공급가 ${fmt(f.card)}원 · 다이빙솔루션 부담 부가세 ${fmt(f.vat)}원)`+
   (f.limited?' · 입력액이 한도를 초과해 적용액을 제한했습니다.':'');
 }
 
